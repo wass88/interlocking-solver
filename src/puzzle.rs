@@ -1,55 +1,11 @@
-type V3 = (usize, usize, usize);
-type V3I = (isize, isize, isize);
-fn v3cube(x: usize) -> V3 {
-    (x, x, x)
-}
-fn v3plus(a: V3, b: V3) -> V3 {
-    (a.0 + b.0, a.1 + b.1, a.2 + b.2)
-}
-
-struct V3Iter {
-    current: V3,
-    end: V3,
-}
-impl V3Iter {
-    fn new(v: V3) -> Self {
-        V3Iter {
-            current: (0, 0, 0),
-            end: v,
-        }
-    }
-    fn cube(x: usize) -> Self {
-        Self::new(v3cube(x))
-    }
-}
-impl Iterator for V3Iter {
-    type Item = V3;
-    fn next(&mut self) -> Option<Self::Item> {
-        let (mut x, mut y, mut z) = self.current;
-        let (ex, ey, ez) = self.end;
-        x += 1;
-        if x >= ex {
-            x = 0;
-            y += 1;
-            if y >= ey {
-                y = 0;
-                z += 1;
-                if z >= ez {
-                    return None;
-                }
-            }
-        }
-        self.current = (x, y, z);
-        return Some(self.current);
-    }
-}
+use crate::cells::*;
 
 #[derive(Clone)]
 pub struct Puzzle {
-    pieces: Vec<Piece>,
-    size: usize,
-    margin: usize,
-    space: usize,
+    pub pieces: Vec<Piece>,
+    pub size: usize,
+    pub margin: usize,
+    pub space: usize,
 }
 
 use std::collections::HashMap;
@@ -135,12 +91,6 @@ impl Puzzle {
                     continue;
                 }
                 reached.insert(removed_state.clone(), next_state.clone());
-                println!(
-                    "{:?} -> {:?} {:?}",
-                    state_to_str(self.space, &state),
-                    state_to_str(self.space, &next_state),
-                    state_to_str(self.space, &removed_state)
-                );
                 queue.push_back((removed_state.clone(), step + 1, last_piece));
             }
         }
@@ -256,11 +206,14 @@ impl Puzzle {
         }
         false
     }
-    fn base(size: usize) -> Puzzle {
+    pub fn base(size: usize, holes: usize) -> Puzzle {
         let mut pieces = vec![Piece::empty(size); size];
         for i in 0..size {
             for x in 0..size {
                 for y in 0..size {
+                    if x == 0 && y == 0 && i < holes {
+                        continue;
+                    }
                     pieces[i].block.set(x, y, i, true);
                 }
             }
@@ -351,11 +304,6 @@ impl SolveResult {
         let init_state = puzzle.init_state();
         while end_state != init_state {
             let prev_state = self.reached.get(&end_state).unwrap();
-            println!(
-                "{} -> {}",
-                state_to_str(puzzle.space, &prev_state),
-                state_to_str(puzzle.space, &end_state)
-            );
             for (i, (&pos, &prev_pos)) in end_state
                 .indexes
                 .iter()
@@ -370,7 +318,6 @@ impl SolveResult {
                         let (ax, ay, az) = Cells::from_index(puzzle.space, pos);
                         let (sx, sy, sz) = end_state.shift;
                         let (x, y, z) = (ax as isize - sx, ay as isize - sy, az as isize - sz);
-                        println!("#{}: {:?} -> {:?}", i, (px, py, pz), (x, y, z));
                         if (x, y, z) == (px, py, pz) {
                             continue;
                         }
@@ -401,101 +348,10 @@ impl SolveResult {
     }
 }
 
-pub struct PuzzleSearcher {
-    size: usize,
-    tries: usize,
-    stack: usize,
-}
-impl PuzzleSearcher {
-    pub fn new(size: usize, tries: usize, stack: usize) -> PuzzleSearcher {
-        PuzzleSearcher { size, tries, stack }
-    }
-    pub fn search<T: PuzzleGenerator>(&self) -> Puzzle {
-        let base_puzzle = Puzzle::base(self.size);
-        let mut puzzles = vec![(base_puzzle, 0); self.stack];
-        let mut max_move = 0;
-        for i in 0..self.tries {
-            for k in 0..self.stack {
-                let (puzzle, max_moves) = &puzzles[k];
-                let new_puzzle = T::generate(&puzzle);
-                let result = new_puzzle.solve();
-                if result.ok {
-                    let moves = result.shrink_move(result.moves(&new_puzzle)).len();
-                    if max_move < moves {
-                        puzzles[k] = (new_puzzle, moves);
-                        max_move = moves;
-                    }
-                }
-            }
-            let best_puzzle = puzzles.iter().max_by_key(|p| p.1).unwrap();
-            println!(
-                "try #{} moves: #{} puzzle:{}",
-                i,
-                best_puzzle.1,
-                best_puzzle.0.to_str()
-            );
-        }
-        puzzles.iter().max_by_key(|p| p.1).unwrap().0.clone()
-    }
-}
-
-trait PuzzleGenerator {
-    fn generate(puzzle: &Puzzle) -> Puzzle;
-}
-
-pub struct SwapPuzzleGenerator {}
-impl PuzzleGenerator for SwapPuzzleGenerator {
-    fn generate(puzzle: &Puzzle) -> Puzzle {
-        let mut pieces = puzzle.pieces.clone();
-
-        use rand::Rng;
-        let mut rnd = rand::thread_rng();
-
-        'retry: loop {
-            let x = rnd.gen_range(0..puzzle.size);
-            let y = rnd.gen_range(0..puzzle.size);
-            let z = rnd.gen_range(0..puzzle.size);
-
-            for a in 0..puzzle.size {
-                if pieces[a].block.get(x, y, z) {
-                    pieces[a].block.set(x, y, z, false);
-                    let b = (a + rnd.gen_range(1..puzzle.size)) % puzzle.size;
-                    pieces[b].block.set(x, y, z, true);
-                    break;
-                }
-            }
-            for piece in pieces.iter() {
-                if !piece.block.is_connected() || piece.block.count() == 0 {
-                    pieces = puzzle.pieces.clone();
-                    continue 'retry;
-                }
-            }
-            break;
-        }
-        Puzzle {
-            pieces,
-            size: puzzle.size,
-            margin: puzzle.margin,
-            space: puzzle.space,
-        }
-    }
-}
-
-pub struct Swap5PuzzleGenerator {}
-impl PuzzleGenerator for Swap5PuzzleGenerator {
-    fn generate(puzzle: &Puzzle) -> Puzzle {
-        let mut puzzle = puzzle.clone();
-        for _ in 0..5 {
-            puzzle = SwapPuzzleGenerator::generate(&puzzle);
-        }
-        puzzle
-    }
-}
-
 #[derive(Clone)]
-struct Piece {
-    block: Cells,
-    size: usize,
+pub struct Piece {
+    pub block: Cells,
+    pub size: usize,
 }
 
 impl Piece {
@@ -533,178 +389,6 @@ impl Piece {
         piece
     }
 }
-
-use bitvec_simd::BitVec;
-#[derive(Clone)]
-struct Cells {
-    bits: BitVec,
-    size: usize,
-}
-impl Cells {
-    fn empty(size: usize) -> Cells {
-        let s = size * size * size;
-        Cells {
-            bits: BitVec::zeros(s),
-            size,
-        }
-    }
-    fn get(&self, x: usize, y: usize, z: usize) -> bool {
-        let index = Cells::to_index(self.size, x, y, z);
-        self.bits[index]
-    }
-    fn getv(&self, v: V3) -> bool {
-        self.get(v.0, v.1, v.2)
-    }
-    fn set(&mut self, x: usize, y: usize, z: usize, value: bool) {
-        let index = Cells::to_index(self.size, x, y, z);
-        self.bits.set(index, value);
-    }
-    fn setv(&mut self, v: V3, value: bool) {
-        self.set(v.0, v.1, v.2, value)
-    }
-    fn to_index(size: usize, x: usize, y: usize, z: usize) -> usize {
-        let index = x + y * size + z * size * size;
-        index
-    }
-    fn from_index(size: usize, index: usize) -> (usize, usize, usize) {
-        let x = index % size;
-        let y = (index / size) % size;
-        let z = index / size / size;
-        (x, y, z)
-    }
-    fn to_str(&self) -> String {
-        let mut s = String::new();
-        for y in 0..self.size {
-            s.push('"');
-            for z in 0..self.size {
-                for x in 0..self.size {
-                    if self.get(x, y, z) {
-                        s.push('x');
-                    } else {
-                        s.push('.');
-                    }
-                }
-                if z < self.size - 1 {
-                    s.push('|')
-                };
-            }
-            s.push_str("\",\n");
-        }
-        s
-    }
-    fn boxed(&self) -> Cells {
-        let ((min_x, min_y, min_z), (max_x, max_y, max_z)) = self.bounding_box();
-        let mut cells = Cells::empty(self.size);
-        for x in min_x..=max_x {
-            for y in min_y..=max_y {
-                for z in min_z..=max_z {
-                    cells.set(x, y, z, true);
-                }
-            }
-        }
-        cells
-    }
-    fn bounding_box(&self) -> ((usize, usize, usize), (usize, usize, usize)) {
-        let mut min_x = self.size;
-        let mut min_y = self.size;
-        let mut min_z = self.size;
-        let mut max_x = 0;
-        let mut max_y = 0;
-        let mut max_z = 0;
-        for x in 0..self.size {
-            for y in 0..self.size {
-                for z in 0..self.size {
-                    if self.get(x, y, z) {
-                        min_x = std::cmp::min(min_x, x);
-                        min_y = std::cmp::min(min_y, y);
-                        min_z = std::cmp::min(min_z, z);
-                        max_x = std::cmp::max(max_x, x);
-                        max_y = std::cmp::max(max_y, y);
-                        max_z = std::cmp::max(max_z, z);
-                    }
-                }
-            }
-        }
-        ((min_x, min_y, min_z), (max_x, max_y, max_z))
-    }
-    fn is_connected(&self) -> bool {
-        let mut cells = Cells::empty(self.size);
-        let mut queue = std::collections::VecDeque::new();
-        'outer: for x in 0..self.size {
-            for y in 0..self.size {
-                for z in 0..self.size {
-                    if self.get(x, y, z) {
-                        cells.set(x, y, z, true);
-                        queue.push_back((x, y, z));
-                        break 'outer;
-                    }
-                }
-            }
-        }
-        while let Some((x, y, z)) = queue.pop_front() {
-            for (dx, dy, dz) in D6 {
-                let nx = x as isize + dx;
-                let ny = y as isize + dy;
-                let nz = z as isize + dz;
-                if nx < 0 || ny < 0 || nz < 0 {
-                    continue;
-                }
-                let nx = nx as usize;
-                let ny = ny as usize;
-                let nz = nz as usize;
-                if nx >= self.size || ny >= self.size || nz >= self.size {
-                    continue;
-                }
-                if cells.get(nx, ny, nz) || !self.get(nx, ny, nz) {
-                    continue;
-                }
-                cells.set(nx, ny, nz, true);
-                queue.push_back((nx, ny, nz));
-            }
-        }
-        for x in 0..self.size {
-            for y in 0..self.size {
-                for z in 0..self.size {
-                    if self.get(x, y, z) && !cells.get(x, y, z) {
-                        return false;
-                    }
-                }
-            }
-        }
-        true
-    }
-    fn count(&self) -> usize {
-        self.bits.count_ones()
-    }
-    fn or_inplace(&mut self, other: &Cells) {
-        self.bits.or_inplace(&other.bits);
-    }
-    fn and_inplace(&mut self, other: &Cells) {
-        self.bits.and_inplace(&other.bits);
-    }
-    fn overlap(&self, other: &Cells) -> bool {
-        self.bits.and_cloned(&other.bits).any()
-    }
-    fn shift_expand(&self, space: usize, shift: V3) -> Cells {
-        let mut res = Cells::empty(space);
-        for d in V3Iter::cube(self.size) {
-            let p = v3plus(d, shift);
-            if self.getv(d) {
-                res.setv(p, true)
-            }
-        }
-        res
-    }
-}
-
-const D6: [V3I; 6] = [
-    (1, 0, 0),
-    (-1, 0, 0),
-    (0, 1, 0),
-    (0, -1, 0),
-    (0, 0, 1),
-    (0, 0, -1),
-];
 
 #[cfg(test)]
 mod tests {
@@ -774,7 +458,6 @@ mod tests {
             .X.|...|...
             XXX|XX.|...",
         );
-        println!("{}", piece_a.block.to_str());
         let piece_b = Piece::from_str(
             3,
             "
@@ -807,7 +490,6 @@ mod tests {
             .XX|.X.|...
             XX.|.X.|...",
         );
-        println!("{}", piece_a.block.to_str());
         let piece_b = Piece::from_str(
             3,
             "
@@ -835,19 +517,8 @@ mod tests {
     }
     #[test]
     fn base_solve() {
-        let puzzle = Puzzle::base(3);
+        let puzzle = Puzzle::base(3, 1);
         println!("{}", puzzle.pieces[0].block.to_str());
         assert!(puzzle.solve().ok);
-    }
-    #[test]
-    fn puzzle_searcher() {
-        let searcher = PuzzleSearcher::new(3, 10, 2);
-        let puzzle = searcher.search::<SwapPuzzleGenerator>();
-        println!("Found\n{}", puzzle.to_str());
-        let result = puzzle.solve();
-        assert!(result.ok);
-        println!("Moves {:?}", result.moves(&puzzle));
-        let shrink = result.shrink_move(result.moves(&puzzle));
-        println!("Shrink #{} {:?}", shrink.len(), shrink);
     }
 }
