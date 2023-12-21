@@ -6,6 +6,7 @@ pub struct Puzzle {
     pub size: usize,
     pub margin: usize,
     pub space: usize,
+    pub reach_limit: Option<usize>,
 }
 
 use std::collections::HashMap;
@@ -32,6 +33,18 @@ impl std::hash::Hash for State {
 impl std::cmp::PartialEq for State {
     fn eq(&self, other: &Self) -> bool {
         self.indexes == other.indexes
+    }
+}
+impl Ord for State {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let self_piece = self.indexes.iter().filter(|x| x.is_some()).count();
+        let other_piece = other.indexes.iter().filter(|x| x.is_some()).count();
+        self_piece.cmp(&other_piece)
+    }
+}
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -64,16 +77,12 @@ impl Puzzle {
         }
     }
     pub fn solve(&self) -> SolveResult {
+        use std::cmp::Reverse;
         let mut reached = HashMap::new();
-        let mut queue = std::collections::VecDeque::new();
-        queue.push_back((self.init_state(), 0, 0));
-        while let Some((state, step, last_piece)) = queue.pop_front() {
+        let mut queue = std::collections::BinaryHeap::new();
+        queue.push(Reverse((self.init_state(), 0, 0)));
+        while let Some(Reverse((state, step, last_piece))) = queue.pop() {
             if self.is_solved(&state) {
-                println!(
-                    "solved step = {}, {:?},",
-                    step,
-                    state_to_str(self.space, &state)
-                );
                 return SolveResult {
                     ok: true,
                     step: Some(step),
@@ -81,20 +90,28 @@ impl Puzzle {
                     end_state: Some(state),
                 };
             }
+            if let Some(reach_limit) = self.reach_limit {
+                if reached.len() >= reach_limit {
+                    println!("limit {} reached step={}", reached.len(), step);
+                    break;
+                }
+            }
             for (next_state, last_piece) in self.next_states(&state, last_piece) {
                 if reached.contains_key(&next_state) {
                     continue;
                 }
                 reached.insert(next_state.clone(), state.clone());
                 let removed_state = self.remove_pieces(&next_state);
-                if reached.contains_key(&removed_state) {
-                    continue;
+                if next_state != removed_state {
+                    if reached.contains_key(&removed_state) {
+                        continue;
+                    }
+                    reached.insert(removed_state.clone(), next_state.clone());
                 }
-                reached.insert(removed_state.clone(), next_state.clone());
-                queue.push_back((removed_state.clone(), step + 1, last_piece));
+                queue.push(Reverse((removed_state.clone(), step + 1, last_piece)));
             }
         }
-        println!("missing solution");
+        //println!("missing solution");
         SolveResult {
             ok: false,
             step: None,
@@ -128,11 +145,10 @@ impl Puzzle {
     fn next_states(&self, state: &State, last_piece: usize) -> Vec<(State, usize)> {
         let mut next_states = Vec::new();
         for c in 0..self.pieces.len() {
-            if state.indexes[c].is_none() {
-                continue;
-            }
-            let index = state.indexes[c].unwrap();
             let i = (last_piece + c) % self.pieces.len();
+            let Some(index) = state.indexes[i] else {
+                continue;
+            };
             let (x, y, z) = Cells::from_index(self.space, index);
             for (dx, dy, dz) in D6 {
                 for s in 1..self.space {
@@ -206,23 +222,29 @@ impl Puzzle {
         }
         false
     }
-    pub fn base(size: usize, holes: usize) -> Puzzle {
-        let mut pieces = vec![Piece::empty(size); size];
-        for i in 0..size {
-            for x in 0..size {
-                for y in 0..size {
-                    if x == 0 && y == 0 && i < holes {
-                        continue;
-                    }
-                    pieces[i].block.set(x, y, i, true);
-                }
+    pub fn base(size: usize, num_pieces: usize, holes: usize) -> Puzzle {
+        let mut pieces = vec![Piece::empty(size); num_pieces];
+        for (x, y, z) in V3Iter::cube(size) {
+            let pz = z;
+            let py = if z % 2 == 0 { y } else { size - y - 1 };
+            let px = if (y + z * size) % 2 == 0 {
+                x
+            } else {
+                size - x - 1
+            };
+            let k = (pz * size + py) * size + px;
+            if k < holes {
+                continue;
             }
+            let i = (k - holes) / ((size * size * size - holes + num_pieces - 1) / num_pieces);
+            pieces[i].block.set(x, y, z, true);
         }
         Puzzle {
             pieces,
             size,
             margin: size,
-            space: size * 4,
+            space: size * 5,
+            reach_limit: Some(10000),
         }
     }
     pub fn to_str(&self) -> String {
@@ -415,13 +437,13 @@ mod tests {
         assert!(!piece_x.block.is_connected());
     }
     #[test]
-    fn solver() {
+    fn solver_normal() {
         let piece_a = Piece::from_str(
             3,
             "
         XXX|...|...
         XXX|...|...
-        XXX|...|...",
+        XXX|.X.|.X.",
         );
         println!("{}", piece_a.block.to_str());
         let piece_b = Piece::from_str(
@@ -429,20 +451,21 @@ mod tests {
             "
         ...|XXX|...
         ...|XXX|.X.
-        ...|XXX|...",
+        ...|X.X|...",
         );
         let piece_c = Piece::from_str(
             3,
             "
         ...|...|XXX
         ...|...|X.X
-        ...|...|XXX",
+        ...|...|X.X",
         );
         let puzzle = Puzzle {
             pieces: vec![piece_a, piece_b, piece_c],
             size: 3,
             margin: 3,
             space: 12,
+            reach_limit: None,
         };
         let result = puzzle.solve();
         assert!(result.ok);
@@ -477,6 +500,7 @@ mod tests {
             size: 3,
             margin: 3,
             space: 12,
+            reach_limit: None,
         };
         let result = puzzle.solve();
         assert!(!result.ok);
@@ -509,6 +533,7 @@ mod tests {
             size: 3,
             margin: 6,
             space: 18,
+            reach_limit: None,
         };
         let result = puzzle.solve();
         assert!(result.ok);
@@ -516,9 +541,112 @@ mod tests {
         println!("Shrink {:?}", result.shrink_move(result.moves(&puzzle)));
     }
     #[test]
-    fn base_solve() {
-        let puzzle = Puzzle::base(3, 1);
-        println!("{}", puzzle.pieces[0].block.to_str());
+    fn test_base_puzzle() {
+        let puzzle = Puzzle::base(3, 4, 1);
+        for state in puzzle.next_states(&puzzle.init_state(), 0) {
+            println!("!{:?}", state);
+        }
         assert!(puzzle.solve().ok);
+    }
+    #[test]
+    fn test_inbox_pieces() {
+        let piece_a = Piece::from_str(
+            4,
+            "
+....|....|....|....
+....|....|..X.|....
+....|....|..X.|....
+....|....|....|....",
+        );
+        let piece_b = Piece::from_str(
+            4,
+            "
+XXXX|X.XX|XXXX|XXXX
+XXXX|X..X|X..X|XXXX
+XXXX|X..X|X..X|XXXX
+XXXX|XXXX|XXXX|XXX.",
+        );
+        let puzzle = Puzzle {
+            pieces: vec![piece_a, piece_b],
+            size: 4,
+            margin: 4,
+            space: 20,
+            reach_limit: None,
+        };
+        let result = puzzle.solve();
+        assert!(result.ok);
+        println!("Moves {:?}", result.moves(&puzzle));
+        assert!(result.moves(&puzzle).len() == 5);
+    }
+    #[test]
+    fn test_rand_puzzle() {
+        let piece_a = Piece::from_str(
+            4,
+            "..xx|..x.|....|....
+        xx.x|.x..|....|....
+        xxxx|...x|....|....
+        xxxx|....|....|....",
+        );
+        let piece_b = Piece::from_str(
+            4,
+            "....|....|....|....
+        ..x.|..x.|....|xxx.
+        ....|xxx.|.x..|.x..
+        ....|....|.x..|.x..",
+        );
+        let piece_c = Piece::from_str(
+            4,
+            "....|xx.x|x.xx|....
+        ....|x..x|xxx.|....
+        ....|....|x...|x...
+        ....|....|....|....",
+        );
+        let piece_d = Piece::from_str(
+            4,
+            "....|....|....|....
+        ....|....|....|....
+        ....|....|....|...x
+        ....|xxx.|x.x.|x.xx",
+        );
+        let piece_e = Piece::from_str(
+            4,
+            "....|....|.x..|xxxx
+        ....|....|...x|...x
+        ....|....|..xx|..x.
+        ....|...x|...x|....",
+        );
+        let puzzle = Puzzle {
+            pieces: vec![piece_a, piece_b, piece_c, piece_d, piece_e],
+            size: 4,
+            margin: 4,
+            space: 4 * 4,
+            reach_limit: Some(7),
+        };
+        let result = puzzle.solve();
+        assert!(result.ok);
+    }
+    #[test]
+    fn test_queue() {
+        let mut queue = std::collections::BinaryHeap::new();
+        let state = State {
+            indexes: vec![Some(0), Some(1), Some(2)],
+            shift: (0, 0, 0),
+        };
+        let removed_state = State {
+            indexes: vec![Some(0), Some(1), None],
+            shift: (0, 0, 0),
+        };
+        let other_state = State {
+            indexes: vec![Some(0), Some(1), Some(3)],
+            shift: (0, 0, 0),
+        };
+        use std::cmp::Reverse;
+        queue.push(Reverse((state, 0)));
+        queue.push(Reverse((removed_state, 1)));
+        queue.push(Reverse((other_state, 2)));
+        queue.clone().into_sorted_vec().iter().for_each(|state| {
+            println!("in queue {:?}", state);
+        });
+        println!("{:?}", queue.pop());
     }
 }

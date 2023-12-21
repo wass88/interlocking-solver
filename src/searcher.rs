@@ -25,30 +25,33 @@ impl<T: PuzzleGenerator> PuzzleSearcher<T> {
     }
     pub fn search(&self) -> Puzzle {
         let base_puzzle = self.initial.clone();
-        let mut puzzles = vec![(base_puzzle, 0); self.stack];
+        let mut puzzles = vec![(base_puzzle, vec![]); self.stack];
         let mut max_move = 0;
         for i in 0..self.tries {
             for k in 0..self.stack {
                 let (puzzle, max_moves) = &puzzles[k];
                 let new_puzzle = self.generator.generate(&puzzle);
+                println!("to_solve\n{}", new_puzzle.to_str());
                 let result = new_puzzle.solve();
                 if result.ok {
-                    let moves = result.shrink_move(result.moves(&new_puzzle)).len();
-                    if max_move < moves {
-                        puzzles[k] = (new_puzzle, moves);
-                        max_move = moves;
+                    let moves = result.shrink_move(result.moves(&new_puzzle));
+                    if max_move <= moves.len() {
+                        puzzles[k] = (new_puzzle, moves.clone());
+                        max_move = moves.len();
                     }
                 }
             }
-            let best_puzzle = puzzles.iter().max_by_key(|p| p.1).unwrap();
-            println!(
-                "try #{} moves: #{} puzzle:{}",
-                i,
-                best_puzzle.1,
-                best_puzzle.0.to_str()
-            );
+            if i % 1 == 0 {
+                println!(
+                    "try #{} moves: #{} puzzle:{}",
+                    i,
+                    max_move,
+                    puzzles[0].0.to_str()
+                );
+                println!("{:?}", puzzles[0].1);
+            }
         }
-        puzzles.iter().max_by_key(|p| p.1).unwrap().0.clone()
+        puzzles[0].0.to_owned()
     }
 }
 
@@ -69,10 +72,10 @@ impl PuzzleGenerator for SwapPuzzleGenerator {
             let y = rnd.gen_range(0..puzzle.size);
             let z = rnd.gen_range(0..puzzle.size);
 
-            for a in 0..puzzle.size {
+            for a in 0..puzzle.pieces.len() {
                 if pieces[a].block.get(x, y, z) {
                     pieces[a].block.set(x, y, z, false);
-                    let b = (a + rnd.gen_range(1..puzzle.size)) % puzzle.size;
+                    let b = (a + rnd.gen_range(1..puzzle.pieces.len())) % puzzle.pieces.len();
                     pieces[b].block.set(x, y, z, true);
                     break;
                 }
@@ -85,12 +88,9 @@ impl PuzzleGenerator for SwapPuzzleGenerator {
             }
             break;
         }
-        Puzzle {
-            pieces,
-            size: puzzle.size,
-            margin: puzzle.margin,
-            space: puzzle.space,
-        }
+        let mut puzzle = puzzle.clone();
+        puzzle.pieces = pieces.clone();
+        puzzle
     }
 }
 
@@ -112,7 +112,7 @@ mod tests {
     use super::*;
     #[test]
     fn puzzle_searcher() {
-        let searcher = PuzzleSearcher::new(3, 10, 2, Puzzle::base(3, 1), SwapPuzzleGenerator {});
+        let searcher = PuzzleSearcher::new(3, 10, 1, Puzzle::base(3, 4, 1), SwapPuzzleGenerator {});
         let puzzle = searcher.search();
         println!("Found\n{}", puzzle.to_str());
         let result = puzzle.solve();

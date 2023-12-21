@@ -8,10 +8,10 @@ use crate::searcher::*;
 fn main() {
     let searcher = PuzzleSearcher::new(
         3,
-        10000,
+        100000000,
         1,
-        Puzzle::base(3, 1),
-        SwapNPuzzleGenerator { swaps: 10 },
+        Puzzle::base(4, 5, 2),
+        SwapNPuzzleGenerator { swaps: 5 },
     );
     let puzzle = searcher.search();
     println!("Found\n{}", puzzle.to_str());
