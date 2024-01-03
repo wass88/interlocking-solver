@@ -1,0 +1,11 @@
+{
+  "binaries": [
+    {
+      "name": "interlocking-solver",
+      "src_path": "/Users/admin/Documents/interlocking-solver/src/main.rs"
+    }
+  ],
+  "examples": [],
+  "integration_tests": [],
+  "unit_tests": []
+}

@@ -24,34 +24,35 @@ impl<T: PuzzleGenerator> PuzzleSearcher<T> {
         }
     }
     pub fn search(&self) -> Puzzle {
-        let base_puzzle = self.initial.clone();
-        let mut puzzles = vec![(base_puzzle, vec![]); self.stack];
-        let mut max_move = 0;
+        let init_puzzle = self.initial.clone();
+        let mut best_puzzles = vec![(init_puzzle, (0, 0), vec![]); self.stack];
         for i in 0..self.tries {
             for k in 0..self.stack {
-                let (puzzle, max_moves) = &puzzles[k];
+                let (puzzle, result, moves) = &best_puzzles[k];
                 let new_puzzle = self.generator.generate(&puzzle);
                 println!("to_solve\n{}", new_puzzle.to_str());
                 let result = new_puzzle.solve();
                 if result.ok {
                     let moves = result.shrink_move(result.moves(&new_puzzle));
-                    if max_move <= moves.len() {
-                        puzzles[k] = (new_puzzle, moves.clone());
-                        max_move = moves.len();
+                    let first = first_remove(&moves);
+                    let result = (first, moves.len());
+                    if best_puzzles[k].1 <= result {
+                        best_puzzles[k] = (new_puzzle, result, moves);
                     }
                 }
-            }
-            if i % 1 == 0 {
-                println!(
-                    "try #{} moves: #{} puzzle:{}",
-                    i,
-                    max_move,
-                    puzzles[0].0.to_str()
-                );
-                println!("{:?}", puzzles[0].1);
+                if i % 1 == 0 {
+                    println!(
+                        "try #{} (first={}, all={})\nmoves: {:?}\npuzzle:\n{}\n|||",
+                        i,
+                        best_puzzles[k].1 .0,
+                        best_puzzles[k].1 .1,
+                        best_puzzles[k].2,
+                        best_puzzles[k].0.to_str()
+                    );
+                }
             }
         }
-        puzzles[0].0.to_owned()
+        best_puzzles[0].0.to_owned()
     }
 }
 
@@ -72,14 +73,32 @@ impl PuzzleGenerator for SwapPuzzleGenerator {
             let y = rnd.gen_range(0..puzzle.size);
             let z = rnd.gen_range(0..puzzle.size);
 
+            let mut found = false;
             for a in 0..puzzle.pieces.len() {
                 if pieces[a].block.get(x, y, z) {
                     pieces[a].block.set(x, y, z, false);
                     let b = (a + rnd.gen_range(1..puzzle.pieces.len())) % puzzle.pieces.len();
                     pieces[b].block.set(x, y, z, true);
+                    found = true;
                     break;
                 }
             }
+            if !found {
+                let a = rnd.gen_range(0..puzzle.pieces.len());
+                let (nx, ny, nz) = (
+                    rnd.gen_range(0..puzzle.size),
+                    rnd.gen_range(0..puzzle.size),
+                    rnd.gen_range(0..puzzle.size),
+                );
+                if !pieces[a].block.get(nx, ny, nz) {
+                    continue 'retry;
+                }
+                assert!(!pieces[a].block.get(x, y, z));
+                assert!(pieces[a].block.get(nx, ny, nz));
+                pieces[a].block.set(x, y, z, true);
+                pieces[a].block.set(nx, ny, nz, false);
+            }
+
             for piece in pieces.iter() {
                 if !piece.block.is_connected() || piece.block.count() == 0 {
                     pieces = puzzle.pieces.clone();
@@ -107,8 +126,19 @@ impl PuzzleGenerator for SwapNPuzzleGenerator {
     }
 }
 
+fn first_remove(moves: &[Move]) -> usize {
+    for i in 0..moves.len() {
+        if let Move::Remove(_, _) = moves[i] {
+            return i;
+        }
+    }
+    unreachable!("puzzle is not solved")
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::puzzle;
+
     use super::*;
     #[test]
     fn puzzle_searcher() {
@@ -120,5 +150,22 @@ mod tests {
         println!("Moves {:?}", result.moves(&puzzle));
         let shrink = result.shrink_move(result.moves(&puzzle));
         println!("Shrink #{} {:?}", shrink.len(), shrink);
+    }
+
+    #[test]
+    fn puzzle_generator() {
+        let holes = 5;
+        let mut puzzle = Puzzle::base(3, 4, holes);
+        let puzzle_generator = SwapPuzzleGenerator {};
+        for _ in 0..100 {
+            puzzle = puzzle_generator.generate(&puzzle);
+            let mut count = 0;
+            puzzle.pieces.iter().for_each(|piece| {
+                assert!(piece.block.is_connected());
+                assert!(piece.block.count() > 0);
+                count += piece.block.count();
+            });
+            assert_eq!(count, puzzle.size * puzzle.size * puzzle.size - holes);
+        }
     }
 }

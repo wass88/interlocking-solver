@@ -624,6 +624,7 @@ XXXX|XXXX|XXXX|XXX.",
         };
         let result = puzzle.solve();
         assert!(result.ok);
+        println!("Moves {:?}", result.shrink_move(result.moves(&puzzle)));
     }
     #[test]
     fn test_queue() {
