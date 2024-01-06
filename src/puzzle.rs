@@ -1,6 +1,6 @@
 use crate::cells::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Puzzle {
     pub pieces: Vec<Piece>,
     pub size: usize,
@@ -312,15 +312,39 @@ impl Puzzle {
         state.shift = (sx + shift_x, sy + shift_y, sz + shift_z);
         state
     }
+    pub fn to_pcad(&self) -> String {
+        let mut s = String::new();
+        s.push_str(
+            "#include <puzzlecad.scad>
+require_puzzlecad_version(\"2.0\");
+$burr_scale = 8.5;
+$auto_layout = false;
+$unit_beveled = true; 
+burr_plate([[\n",
+        );
+        for (i, piece) in self.pieces.iter().enumerate() {
+            if i > 0 {
+                s.push_str("],[\n");
+            }
+            s.push_str(&format!("{}", piece.block.to_str()));
+        }
+        s.push_str("]]);");
+        s
+    }
 }
-pub type Moves = Vec<Move>;
 #[derive(Clone, Copy, Debug)]
 pub enum Move {
     Shift(usize, V3I),
     Remove(usize, V3I),
 }
+#[derive(Clone, Debug)]
+pub enum ShrinkMove {
+    Shift(Vec<usize>, V3I),
+    Remove(usize, V3I),
+}
+
 impl SolveResult {
-    pub fn moves(&self, puzzle: &Puzzle) -> Moves {
+    pub fn moves(&self, puzzle: &Puzzle) -> Vec<Move> {
         let mut moves = Vec::new();
         let mut end_state = self.end_state.clone().unwrap();
         let init_state = puzzle.init_state();
@@ -361,16 +385,47 @@ impl SolveResult {
         moves.reverse();
         moves
     }
-    pub fn shrink_move(&self, moves: Moves) -> Moves {
+    pub fn shrink_move(&self, moves: &[Move]) -> Vec<ShrinkMove> {
         if moves.len() == 0 {
-            return moves;
+            return vec![];
         }
 
-        moves
+        let mut shrink_moves = Vec::new();
+        let mut last_move = match moves[0] {
+            Move::Shift(i, v) => ShrinkMove::Shift(vec![i], v),
+            Move::Remove(i, v) => ShrinkMove::Remove(i, v),
+        };
+        for &move_ in moves.iter().skip(1) {
+            match last_move {
+                ShrinkMove::Shift(ref i, v) => match move_ {
+                    Move::Shift(j, w) => {
+                        if v == w {
+                            last_move = ShrinkMove::Shift([i.clone(), vec![j]].concat(), v);
+                        } else {
+                            shrink_moves.push(last_move);
+                            last_move = ShrinkMove::Shift(vec![j], w);
+                        }
+                    }
+                    Move::Remove(j, w) => {
+                        shrink_moves.push(last_move);
+                        last_move = ShrinkMove::Remove(j, w);
+                    }
+                },
+                ShrinkMove::Remove(i, v) => {
+                    shrink_moves.push(last_move);
+                    last_move = match move_ {
+                        Move::Shift(j, w) => ShrinkMove::Shift(vec![j], w),
+                        Move::Remove(j, w) => ShrinkMove::Remove(j, w),
+                    };
+                }
+            }
+        }
+        shrink_moves.push(last_move);
+        shrink_moves
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Piece {
     pub block: Cells,
     pub size: usize,
@@ -470,7 +525,7 @@ mod tests {
         let result = puzzle.solve();
         assert!(result.ok);
         println!("Moves {:?}", result.moves(&puzzle));
-        println!("Shrink {:?}", result.shrink_move(result.moves(&puzzle)));
+        println!("Shrink {:?}", result.shrink_move(&result.moves(&puzzle)));
     }
     #[test]
     fn solver_cant() {
@@ -538,7 +593,7 @@ mod tests {
         let result = puzzle.solve();
         assert!(result.ok);
         println!("Moves {:?}", result.moves(&puzzle));
-        println!("Shrink {:?}", result.shrink_move(result.moves(&puzzle)));
+        println!("Shrink {:?}", result.shrink_move(&result.moves(&puzzle)));
     }
     #[test]
     fn test_base_puzzle() {
@@ -624,7 +679,7 @@ XXXX|XXXX|XXXX|XXX.",
         };
         let result = puzzle.solve();
         assert!(result.ok);
-        println!("Moves {:?}", result.shrink_move(result.moves(&puzzle)));
+        println!("Moves {:?}", result.shrink_move(&result.moves(&puzzle)));
     }
     #[test]
     fn test_queue() {
@@ -649,5 +704,23 @@ XXXX|XXXX|XXXX|XXX.",
             println!("in queue {:?}", state);
         });
         println!("{:?}", queue.pop());
+    }
+    #[test]
+    fn test_shrink_move() {
+        let moves = vec![
+            Move::Shift(0, (1, 0, 0)),
+            Move::Shift(1, (0, 1, 0)),
+            Move::Shift(2, (0, 0, 1)),
+            Move::Shift(0, (0, 0, 1)),
+            Move::Shift(2, (0, 0, 1)),
+            Move::Shift(1, (0, 1, 1)),
+            Move::Remove(0, (0, 0, 0)),
+            Move::Remove(2, (0, 0, 0)),
+        ];
+        let puzzle = Puzzle::base(3, 4, 1);
+        let result = puzzle.solve();
+        let shrink = result.shrink_move(&moves);
+        println!("Shrink #{} {:?}", shrink.len(), shrink);
+        assert_eq!(shrink.len(), 6);
     }
 }

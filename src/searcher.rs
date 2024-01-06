@@ -1,54 +1,60 @@
 use crate::puzzle::*;
 
-pub struct PuzzleSearcher<T: PuzzleGenerator> {
+#[derive(Debug, Clone)]
+pub struct PuzzleSearcher<G: PuzzleGenerator, E: Evaluator> {
     size: usize,
     tries: usize,
     stack: usize,
+    give_up: usize,
     initial: Puzzle,
-    generator: T,
+    generator: G,
+    pub evaluator: E,
 }
-impl<T: PuzzleGenerator> PuzzleSearcher<T> {
+impl<G: PuzzleGenerator, E: Evaluator> PuzzleSearcher<G, E> {
     pub fn new(
         size: usize,
         tries: usize,
         stack: usize,
         initial: Puzzle,
-        generator: T,
-    ) -> PuzzleSearcher<T> {
+        give_up: usize,
+        generator: G,
+        evaluator: E,
+    ) -> PuzzleSearcher<G, E> {
         PuzzleSearcher {
             size,
             tries,
             stack,
             initial,
+            give_up,
             generator,
+            evaluator,
         }
     }
     pub fn search(&self) -> Puzzle {
         let init_puzzle = self.initial.clone();
-        let mut best_puzzles = vec![(init_puzzle, (0, 0), vec![]); self.stack];
+        let mut best_puzzles = vec![(init_puzzle, E::Value::default(), vec![], 0); self.stack];
         for i in 0..self.tries {
             for k in 0..self.stack {
-                let (puzzle, result, moves) = &best_puzzles[k];
+                let mut best = best_puzzles[k].clone();
+                best.3 += 1;
+                if best.3 > self.give_up {
+                    return best_puzzles[0].0.to_owned();
+                }
+                best_puzzles[k] = best;
+
+                let (puzzle, best_value, _, _) = &best_puzzles[k];
                 let new_puzzle = self.generator.generate(&puzzle);
-                println!("to_solve\n{}", new_puzzle.to_str());
+                //println!("to_solve\n{}", new_puzzle.to_str());
                 let result = new_puzzle.solve();
                 if result.ok {
-                    let moves = result.shrink_move(result.moves(&new_puzzle));
-                    let first = first_remove(&moves);
-                    let result = (first, moves.len());
-                    if best_puzzles[k].1 <= result {
-                        best_puzzles[k] = (new_puzzle, result, moves);
+                    let value = self.evaluator.evaluate(&new_puzzle, &result);
+                    if best_value <= &value {
+                        let shrink_moves = result.shrink_move(&result.moves(&new_puzzle));
+                        best_puzzles[k] = (new_puzzle, value, shrink_moves, 0);
                     }
                 }
                 if i % 1 == 0 {
-                    println!(
-                        "try #{} (first={}, all={})\nmoves: {:?}\npuzzle:\n{}\n|||",
-                        i,
-                        best_puzzles[k].1 .0,
-                        best_puzzles[k].1 .1,
-                        best_puzzles[k].2,
-                        best_puzzles[k].0.to_str()
-                    );
+                    println!("try #{} ({})", i, best_puzzles[k].1.to_str(),);
                 }
             }
         }
@@ -56,10 +62,44 @@ impl<T: PuzzleGenerator> PuzzleSearcher<T> {
     }
 }
 
-pub trait PuzzleGenerator {
+pub trait EvalValue: Ord + Copy + Clone + Default + Send + Sync {
+    fn to_str(&self) -> String;
+    fn to_path(&self) -> String;
+}
+
+pub trait Evaluator: Clone + Send + Sync {
+    type Value: EvalValue;
+    fn evaluate(&self, puzzle: &Puzzle, result: &SolveResult) -> Self::Value;
+}
+
+#[derive(Debug, Clone)]
+pub struct ShrinkStepEvaluator {}
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ShrinkStepValue(usize, usize, usize);
+impl EvalValue for ShrinkStepValue {
+    fn to_str(&self) -> String {
+        format!("first={} shrink={} all={}", self.0, self.1, self.2)
+    }
+    fn to_path(&self) -> String {
+        format!("F{}S{}A{}", self.0, self.1, self.2)
+    }
+}
+
+impl Evaluator for ShrinkStepEvaluator {
+    type Value = ShrinkStepValue;
+    fn evaluate(&self, puzzle: &Puzzle, result: &SolveResult) -> Self::Value {
+        let moves = result.moves(puzzle);
+        let shrink_moves = result.shrink_move(&moves);
+        let first = first_remove(&shrink_moves);
+        ShrinkStepValue(first, shrink_moves.len(), moves.len())
+    }
+}
+
+pub trait PuzzleGenerator: Clone + Send + Sync {
     fn generate(&self, puzzle: &Puzzle) -> Puzzle;
 }
 
+#[derive(Clone, Debug)]
 pub struct SwapPuzzleGenerator {}
 impl PuzzleGenerator for SwapPuzzleGenerator {
     fn generate(&self, puzzle: &Puzzle) -> Puzzle {
@@ -113,6 +153,7 @@ impl PuzzleGenerator for SwapPuzzleGenerator {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct SwapNPuzzleGenerator {
     pub swaps: usize,
 }
@@ -126,9 +167,9 @@ impl PuzzleGenerator for SwapNPuzzleGenerator {
     }
 }
 
-fn first_remove(moves: &[Move]) -> usize {
+fn first_remove(moves: &[ShrinkMove]) -> usize {
     for i in 0..moves.len() {
-        if let Move::Remove(_, _) = moves[i] {
+        if let ShrinkMove::Remove(_, _) = moves[i] {
             return i;
         }
     }
@@ -137,18 +178,24 @@ fn first_remove(moves: &[Move]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::puzzle;
-
     use super::*;
     #[test]
     fn puzzle_searcher() {
-        let searcher = PuzzleSearcher::new(3, 10, 1, Puzzle::base(3, 4, 1), SwapPuzzleGenerator {});
+        let searcher = PuzzleSearcher::new(
+            3,
+            10,
+            1,
+            Puzzle::base(3, 4, 1),
+            10000,
+            SwapPuzzleGenerator {},
+            ShrinkStepEvaluator {},
+        );
         let puzzle = searcher.search();
         println!("Found\n{}", puzzle.to_str());
         let result = puzzle.solve();
         assert!(result.ok);
         println!("Moves {:?}", result.moves(&puzzle));
-        let shrink = result.shrink_move(result.moves(&puzzle));
+        let shrink = result.shrink_move(&result.moves(&puzzle));
         println!("Shrink #{} {:?}", shrink.len(), shrink);
     }
 

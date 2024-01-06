@@ -45,7 +45,7 @@ impl Iterator for V3Iter {
 }
 
 use bitvec_simd::BitVec;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Cells {
     bits: BitVec,
     size: usize,
