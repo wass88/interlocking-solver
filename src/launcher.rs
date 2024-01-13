@@ -18,7 +18,7 @@ impl PuzzleWriter {
         let path = format!("{}/{}_step_{}.pcad", self.dir, date_path, value.to_path());
         let moves = result.moves(puzzle);
         let shrink_moves = result.shrink_move(&moves);
-        let pcad = format!("{}\n\n\\\\{:?}", puzzle.to_pcad(), shrink_moves);
+        let pcad = format!("{}\n\n//{:?}", puzzle.to_pcad(), shrink_moves);
         println!("write to {}", path);
         std::fs::write(path, pcad).unwrap();
     }

@@ -222,7 +222,7 @@ impl Puzzle {
         }
         false
     }
-    pub fn base(size: usize, num_pieces: usize, holes: usize) -> Puzzle {
+    pub fn base(size: usize, num_pieces: usize, holes: usize, limit: Option<usize>) -> Puzzle {
         let mut pieces = vec![Piece::empty(size); num_pieces];
         for (x, y, z) in V3Iter::cube(size) {
             let pz = z;
@@ -244,7 +244,7 @@ impl Puzzle {
             size,
             margin: size,
             space: size * 5,
-            reach_limit: Some(10000),
+            reach_limit: limit,
         }
     }
     pub fn to_str(&self) -> String {
@@ -315,7 +315,7 @@ impl Puzzle {
     pub fn to_pcad(&self) -> String {
         let mut s = String::new();
         s.push_str(
-            "#include <puzzlecad.scad>
+            "include <puzzlecad.scad>
 require_puzzlecad_version(\"2.0\");
 $burr_scale = 8.5;
 $auto_layout = false;
@@ -597,7 +597,7 @@ mod tests {
     }
     #[test]
     fn test_base_puzzle() {
-        let puzzle = Puzzle::base(3, 4, 1);
+        let puzzle = Puzzle::base(3, 4, 1, None);
         for state in puzzle.next_states(&puzzle.init_state(), 0) {
             println!("!{:?}", state);
         }
@@ -717,7 +717,7 @@ XXXX|XXXX|XXXX|XXX.",
             Move::Remove(0, (0, 0, 0)),
             Move::Remove(2, (0, 0, 0)),
         ];
-        let puzzle = Puzzle::base(3, 4, 1);
+        let puzzle = Puzzle::base(3, 4, 1, None);
         let result = puzzle.solve();
         let shrink = result.shrink_move(&moves);
         println!("Shrink #{} {:?}", shrink.len(), shrink);

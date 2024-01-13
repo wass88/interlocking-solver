@@ -2,7 +2,6 @@ use crate::puzzle::*;
 
 #[derive(Debug, Clone)]
 pub struct PuzzleSearcher<G: PuzzleGenerator, E: Evaluator> {
-    size: usize,
     tries: usize,
     stack: usize,
     give_up: usize,
@@ -12,7 +11,6 @@ pub struct PuzzleSearcher<G: PuzzleGenerator, E: Evaluator> {
 }
 impl<G: PuzzleGenerator, E: Evaluator> PuzzleSearcher<G, E> {
     pub fn new(
-        size: usize,
         tries: usize,
         stack: usize,
         initial: Puzzle,
@@ -21,7 +19,6 @@ impl<G: PuzzleGenerator, E: Evaluator> PuzzleSearcher<G, E> {
         evaluator: E,
     ) -> PuzzleSearcher<G, E> {
         PuzzleSearcher {
-            size,
             tries,
             stack,
             initial,
@@ -182,10 +179,9 @@ mod tests {
     #[test]
     fn puzzle_searcher() {
         let searcher = PuzzleSearcher::new(
-            3,
             10,
             1,
-            Puzzle::base(3, 4, 1),
+            Puzzle::base(3, 4, 1, None),
             10000,
             SwapPuzzleGenerator {},
             ShrinkStepEvaluator {},
@@ -202,7 +198,7 @@ mod tests {
     #[test]
     fn puzzle_generator() {
         let holes = 5;
-        let mut puzzle = Puzzle::base(3, 4, holes);
+        let mut puzzle = Puzzle::base(3, 4, holes, None);
         let puzzle_generator = SwapPuzzleGenerator {};
         for _ in 0..100 {
             puzzle = puzzle_generator.generate(&puzzle);
