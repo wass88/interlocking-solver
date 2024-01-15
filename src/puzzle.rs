@@ -68,6 +68,7 @@ fn state_to_str(size: usize, state: &State) -> String {
     s.push_str(&format!("shift {:?}", state.shift));
     s
 }
+
 impl Puzzle {
     fn init_state(&self) -> State {
         let init_pos = Cells::to_index(self.space, self.margin, self.margin, self.margin);
@@ -77,6 +78,23 @@ impl Puzzle {
         }
     }
     pub fn solve(&self) -> SolveResult {
+        use itertools::Itertools;
+        for subset in (0..self.pieces.len()).combinations(2) {
+            let puzzle = self.subset_puzzle(&subset);
+            let result = puzzle.solve_whole();
+            if !result.ok {
+                println!("subset {:?} missing solution", subset);
+                return SolveResult {
+                    ok: false,
+                    step: None,
+                    reached: HashMap::new(),
+                    end_state: None,
+                };
+            }
+        }
+        self.solve_whole()
+    }
+    pub fn solve_whole(&self) -> SolveResult {
         use std::cmp::Reverse;
         let mut reached = HashMap::new();
         let mut queue = std::collections::BinaryHeap::new();
@@ -330,6 +348,19 @@ burr_plate([[\n",
         }
         s.push_str("]]);");
         s
+    }
+    fn subset_puzzle(&self, subset: &[usize]) -> Puzzle {
+        let mut pieces = Vec::new();
+        for &i in subset {
+            pieces.push(self.pieces[i].clone());
+        }
+        Puzzle {
+            pieces,
+            size: self.size,
+            margin: self.margin,
+            space: self.space,
+            reach_limit: self.reach_limit,
+        }
     }
 }
 #[derive(Clone, Copy, Debug)]
