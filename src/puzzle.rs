@@ -81,9 +81,9 @@ impl Puzzle {
         use itertools::Itertools;
         for subset in (0..self.pieces.len()).combinations(2) {
             let puzzle = self.subset_puzzle(&subset);
-            let result = puzzle.solve_whole();
+            let result = puzzle.solve_whole(false);
             if !result.ok {
-                println!("subset {:?} missing solution", subset);
+                println!("INFO: FAIL subset {:?} missing solution", subset);
                 return SolveResult {
                     ok: false,
                     step: None,
@@ -92,15 +92,18 @@ impl Puzzle {
                 };
             }
         }
-        self.solve_whole()
+        self.solve_whole(true)
     }
-    pub fn solve_whole(&self) -> SolveResult {
+    pub fn solve_whole(&self, log: bool) -> SolveResult {
         use std::cmp::Reverse;
         let mut reached = HashMap::new();
         let mut queue = std::collections::BinaryHeap::new();
         queue.push(Reverse((self.init_state(), 0, 0)));
         while let Some(Reverse((state, step, last_piece))) = queue.pop() {
             if self.is_solved(&state) {
+                if log {
+                    println!("INFO: SOLVED limit={} step={}", reached.len(), step);
+                }
                 return SolveResult {
                     ok: true,
                     step: Some(step),
@@ -110,7 +113,9 @@ impl Puzzle {
             }
             if let Some(reach_limit) = self.reach_limit {
                 if reached.len() >= reach_limit {
-                    println!("limit {} reached step={}", reached.len(), step);
+                    if log {
+                        println!("DEBUG: limit={} reached step={}", reached.len(), step);
+                    }
                     break;
                 }
             }
@@ -129,7 +134,9 @@ impl Puzzle {
                 queue.push(Reverse((removed_state.clone(), step + 1, last_piece)));
             }
         }
-        //println!("missing solution");
+        if log {
+            println!("INFO: FAIL whole missing solution");
+        }
         SolveResult {
             ok: false,
             step: None,
