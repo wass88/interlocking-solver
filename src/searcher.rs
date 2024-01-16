@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use crate::puzzle::*;
 
 #[derive(Debug, Clone)]
@@ -92,6 +94,28 @@ impl Evaluator for ShrinkStepEvaluator {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DupDropEvaluator {}
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Ord, PartialOrd)]
+pub struct DupDropValue(usize, usize, usize);
+impl EvalValue for DupDropValue {
+    fn to_str(&self) -> String {
+        format!("dup={} shrink={} all={}", self.0, self.1, self.2)
+    }
+    fn to_path(&self) -> String {
+        format!("D{}S{}A{}", self.0, self.1, self.2)
+    }
+}
+impl Evaluator for DupDropEvaluator {
+    type Value = DupDropValue;
+    fn evaluate(&self, puzzle: &Puzzle, result: &SolveResult) -> Self::Value {
+        let moves = result.moves(puzzle);
+        let shrink_moves = result.shrink_move(&moves);
+        let drop_count = drop_count(&shrink_moves);
+        DupDropValue(drop_count, shrink_moves.len(), moves.len())
+    }
+}
+
 pub trait PuzzleGenerator: Clone + Send + Sync {
     fn generate(&self, puzzle: &Puzzle) -> Puzzle;
 }
@@ -171,6 +195,23 @@ fn first_remove(moves: &[ShrinkMove]) -> usize {
         }
     }
     unreachable!("puzzle is not solved")
+}
+
+fn drop_count(moves: &[ShrinkMove]) -> usize {
+    let mut drops = 0;
+    let mut touch_pieces = vec![];
+    for i in 0..moves.len() {
+        match &moves[i] {
+            ShrinkMove::Remove(_, _) => {
+                drops += touch_pieces.iter().unique().count() * touch_pieces.len();
+                touch_pieces.clear();
+            }
+            ShrinkMove::Shift(p, _) => {
+                touch_pieces.push(p);
+            }
+        }
+    }
+    drops
 }
 
 #[cfg(test)]

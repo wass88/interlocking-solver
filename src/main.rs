@@ -10,13 +10,13 @@ use searcher::*;
 fn main() {
     let searcher = PuzzleSearcher::new(
         1000000,
-        1,
-        Puzzle::base(5, 6, 2, Some(50000)),
+        8,
+        Puzzle::base(4, 5, 2, Some(50000)),
         10000,
         SwapNPuzzleGenerator { swaps: 6 },
-        ShrinkStepEvaluator {},
+        DupDropEvaluator {},
     );
     let luncher = Launcher::new(searcher, 2);
-    let writer = launcher::PuzzleWriter::new("puzzles/puzzles_5".to_string());
+    let writer = launcher::PuzzleWriter::new("puzzles/puzzle_20240116_4_dup_drop".to_string());
     luncher.launch(&writer).unwrap();
 }
