@@ -10,6 +10,7 @@ pub struct PuzzleWriter {
 }
 impl PuzzleWriter {
     pub fn new(dir: String) -> Self {
+        std::fs::create_dir_all(&dir).unwrap();
         Self { dir }
     }
     pub fn write<V: EvalValue>(&self, puzzle: &Puzzle, result: &SolveResult, value: V) {

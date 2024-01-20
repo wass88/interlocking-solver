@@ -34,12 +34,13 @@ impl<G: PuzzleGenerator, E: Evaluator> PuzzleSearcher<G, E> {
         let mut best_puzzles = vec![(init_puzzle, E::Value::default(), vec![], 0); self.stack];
         for i in 0..self.tries {
             for k in 0..self.stack {
-                let mut best = best_puzzles[k].clone();
-                best.3 += 1;
-                if best.3 > self.give_up {
-                    return best_puzzles[0].0.to_owned();
+                {
+                    let best = &mut best_puzzles[k];
+                    best.3 += 1;
+                    if best.3 > self.give_up {
+                        return best_puzzles[0].0.to_owned();
+                    }
                 }
-                best_puzzles[k] = best;
 
                 let (puzzle, best_value, _, _) = &best_puzzles[k];
                 let new_puzzle = self.generator.generate(&puzzle);
@@ -47,13 +48,26 @@ impl<G: PuzzleGenerator, E: Evaluator> PuzzleSearcher<G, E> {
                 let result = new_puzzle.solve();
                 if result.ok {
                     let value = self.evaluator.evaluate(&new_puzzle, &result);
+                    println!("#{} value: {}", i, value.to_str());
                     if best_value <= &value {
                         let shrink_moves = result.shrink_move(&result.moves(&new_puzzle));
-                        best_puzzles[k] = (new_puzzle, value, shrink_moves, 0);
+                        let count = if best_value < &value {
+                            println!("#{} updated", i);
+                            0
+                        } else {
+                            best_puzzles[k].3
+                        };
+                        best_puzzles[k] = (new_puzzle, value, shrink_moves, count);
                     }
                 }
                 if i % 1 == 0 {
-                    println!("try #{} ({})", i, best_puzzles[k].1.to_str(),);
+                    println!(
+                        "try #{}-({}<{}) ({})",
+                        i,
+                        best_puzzles[k].3,
+                        self.give_up,
+                        best_puzzles[k].1.to_str(),
+                    );
                 }
             }
         }
@@ -121,8 +135,10 @@ pub trait PuzzleGenerator: Clone + Send + Sync {
 }
 
 #[derive(Clone, Debug)]
-pub struct SwapPuzzleGenerator {}
-impl PuzzleGenerator for SwapPuzzleGenerator {
+pub struct SwapPuzzleGenerator<C: PuzzleConstraints> {
+    pub constraints: C,
+}
+impl<C: PuzzleConstraints> PuzzleGenerator for SwapPuzzleGenerator<C> {
     fn generate(&self, puzzle: &Puzzle) -> Puzzle {
         let mut pieces = puzzle.pieces.clone();
 
@@ -166,6 +182,10 @@ impl PuzzleGenerator for SwapPuzzleGenerator {
                     continue 'retry;
                 }
             }
+
+            if !self.constraints.is_ok(&pieces) {
+                continue 'retry;
+            }
             break;
         }
         let mut puzzle = puzzle.clone();
@@ -175,16 +195,41 @@ impl PuzzleGenerator for SwapPuzzleGenerator {
 }
 
 #[derive(Clone, Debug)]
-pub struct SwapNPuzzleGenerator {
+pub struct SwapNPuzzleGenerator<C: PuzzleConstraints> {
     pub swaps: usize,
+    pub constraints: C,
 }
-impl PuzzleGenerator for SwapNPuzzleGenerator {
+impl<C: PuzzleConstraints> PuzzleGenerator for SwapNPuzzleGenerator<C> {
     fn generate(&self, puzzle: &Puzzle) -> Puzzle {
         let mut puzzle = puzzle.clone();
         for _ in 0..self.swaps {
-            puzzle = SwapPuzzleGenerator {}.generate(&puzzle);
+            puzzle = SwapPuzzleGenerator {
+                constraints: self.constraints.clone(),
+            }
+            .generate(&puzzle);
         }
         puzzle
+    }
+}
+
+trait PuzzleConstraints: Clone + Send + Sync {
+    fn is_ok(&self, pieces: &[Piece]) -> bool;
+}
+#[derive(Clone, Debug)]
+pub struct MinPuzzleSizeConstraints<C: PuzzleConstraints> {
+    pub size: usize,
+    pub next: C,
+}
+impl<C: PuzzleConstraints> PuzzleConstraints for MinPuzzleSizeConstraints<C> {
+    fn is_ok(&self, pieces: &[Piece]) -> bool {
+        pieces.iter().all(|piece| piece.block.count() >= self.size) && self.next.is_ok(pieces)
+    }
+}
+#[derive(Clone, Debug)]
+pub struct TerminalPuzzleConstraints {}
+impl PuzzleConstraints for TerminalPuzzleConstraints {
+    fn is_ok(&self, _pieces: &[Piece]) -> bool {
+        true
     }
 }
 
@@ -199,15 +244,19 @@ fn first_remove(moves: &[ShrinkMove]) -> usize {
 
 fn drop_count(moves: &[ShrinkMove]) -> usize {
     let mut drops = 0;
-    let mut touch_pieces = vec![];
+    let mut touch_pieces: Vec<usize> = vec![];
+    let mut touch_count = 0;
     for i in 0..moves.len() {
         match &moves[i] {
             ShrinkMove::Remove(_, _) => {
-                drops += touch_pieces.iter().unique().count() * touch_pieces.len();
+                let pieces_count = touch_pieces.iter().unique().count();
+                drops += pieces_count * pieces_count * touch_count;
                 touch_pieces.clear();
+                touch_count = 0;
             }
             ShrinkMove::Shift(p, _) => {
-                touch_pieces.push(p);
+                touch_pieces.extend(p);
+                touch_count += 1;
             }
         }
     }
@@ -224,7 +273,9 @@ mod tests {
             1,
             Puzzle::base(3, 4, 1, None),
             10000,
-            SwapPuzzleGenerator {},
+            SwapPuzzleGenerator {
+                constraints: TerminalPuzzleConstraints {},
+            },
             ShrinkStepEvaluator {},
         );
         let puzzle = searcher.search();
@@ -240,7 +291,9 @@ mod tests {
     fn puzzle_generator() {
         let holes = 5;
         let mut puzzle = Puzzle::base(3, 4, holes, None);
-        let puzzle_generator = SwapPuzzleGenerator {};
+        let puzzle_generator = SwapPuzzleGenerator {
+            constraints: TerminalPuzzleConstraints {},
+        };
         for _ in 0..100 {
             puzzle = puzzle_generator.generate(&puzzle);
             let mut count = 0;
@@ -251,5 +304,19 @@ mod tests {
             });
             assert_eq!(count, puzzle.size * puzzle.size * puzzle.size - holes);
         }
+    }
+
+    #[test]
+    fn test_drop_count() {
+        use ShrinkMove::*;
+        let moves = vec![
+            Shift(vec![0], (0, 0, 0)),
+            Remove(0, (0, 0, 0)),
+            Shift(vec![1], (0, 0, 0)),
+            Shift(vec![2], (0, 0, 0)),
+            Remove(1, (0, 0, 0)),
+        ];
+        let count = drop_count(&moves);
+        assert_eq!(count, 1 + 2 * 2 * 2);
     }
 }
