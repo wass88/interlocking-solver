@@ -1,0 +1,18 @@
+<thead>
+  <tr>
+      <td>image</td>
+      <td>filename</td>
+      <td>dir</td>
+      <td>moves</td>
+  </tr>
+</thead>
+<tbody>
+  {% for puzzle in puzzles %}
+    <tr>
+      <td><img src="{{puzzle.image}}"/></td>
+      <td>{{puzzle.filename}}</td>
+      <td>{{puzzle.dir}}</td>
+      <td>{{puzzle.moves}}</td>
+    </tr>
+  {% endfor %}
+</tbody>
