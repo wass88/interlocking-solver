@@ -1,6 +1,6 @@
-use itertools::Itertools;
-
 use crate::puzzle::*;
+use itertools::Itertools;
+use std::fmt::Debug;
 
 #[derive(Debug, Clone)]
 pub struct PuzzleSearcher<G: PuzzleGenerator, E: Evaluator> {
@@ -80,7 +80,7 @@ pub trait EvalValue: Ord + Copy + Clone + Default + Send + Sync {
     fn to_path(&self) -> String;
 }
 
-pub trait Evaluator: Clone + Send + Sync {
+pub trait Evaluator: Clone + Send + Sync + Debug {
     type Value: EvalValue;
     fn evaluate(&self, puzzle: &Puzzle, result: &SolveResult) -> Self::Value;
 }
@@ -111,13 +111,16 @@ impl Evaluator for ShrinkStepEvaluator {
 #[derive(Debug, Clone)]
 pub struct DupDropEvaluator {}
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Ord, PartialOrd)]
-pub struct DupDropValue(usize, usize, usize);
+pub struct DupDropValue(usize, usize, usize, usize);
 impl EvalValue for DupDropValue {
     fn to_str(&self) -> String {
-        format!("dup={} shrink={} all={}", self.0, self.1, self.2)
+        format!(
+            "first={} dup={} shrink={} all={}",
+            self.0, self.1, self.2, self.3
+        )
     }
     fn to_path(&self) -> String {
-        format!("D{}S{}A{}", self.0, self.1, self.2)
+        format!("F{}D{}S{}A{}", self.0, self.1, self.2, self.3)
     }
 }
 impl Evaluator for DupDropEvaluator {
@@ -125,12 +128,13 @@ impl Evaluator for DupDropEvaluator {
     fn evaluate(&self, puzzle: &Puzzle, result: &SolveResult) -> Self::Value {
         let moves = result.moves(puzzle);
         let shrink_moves = result.shrink_move(&moves);
+        let first = first_remove(&shrink_moves);
         let drop_count = drop_count(&shrink_moves);
-        DupDropValue(drop_count, shrink_moves.len(), moves.len())
+        DupDropValue(first, drop_count, shrink_moves.len(), moves.len())
     }
 }
 
-pub trait PuzzleGenerator: Clone + Send + Sync {
+pub trait PuzzleGenerator: Clone + Send + Sync + Debug {
     fn generate(&self, puzzle: &Puzzle) -> Puzzle;
 }
 
@@ -212,7 +216,7 @@ impl<C: PuzzleConstraints> PuzzleGenerator for SwapNPuzzleGenerator<C> {
     }
 }
 
-trait PuzzleConstraints: Clone + Send + Sync {
+trait PuzzleConstraints: Clone + Send + Sync + Debug {
     fn is_ok(&self, pieces: &[Piece]) -> bool;
 }
 #[derive(Clone, Debug)]
@@ -310,10 +314,10 @@ mod tests {
     fn test_drop_count() {
         use ShrinkMove::*;
         let moves = vec![
-            Shift(vec![0], (0, 0, 0)),
+            Shift(vec![0], vec![(0, 0, 0)]),
             Remove(0, (0, 0, 0)),
-            Shift(vec![1], (0, 0, 0)),
-            Shift(vec![2], (0, 0, 0)),
+            Shift(vec![1], vec![(0, 0, 0)]),
+            Shift(vec![2], vec![(0, 0, 0)]),
             Remove(1, (0, 0, 0)),
         ];
         let count = drop_count(&moves);

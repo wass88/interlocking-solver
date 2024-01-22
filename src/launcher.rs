@@ -23,6 +23,10 @@ impl PuzzleWriter {
         println!("write to {}", path);
         std::fs::write(path, pcad).unwrap();
     }
+    pub fn write_config(&self, log: &str) {
+        let path = format!("{}/config.log", self.dir);
+        std::fs::write(path, log).unwrap();
+    }
 }
 
 impl<G: PuzzleGenerator, E: Evaluator> Launcher<G, E> {
@@ -33,6 +37,7 @@ impl<G: PuzzleGenerator, E: Evaluator> Launcher<G, E> {
 
 impl<G: PuzzleGenerator + 'static, E: Evaluator + 'static> Launcher<G, E> {
     pub fn launch(&self, writer: &PuzzleWriter) -> Result<(), String> {
+        writer.write_config(&format!("{:#?}", self.searcher));
         let (tx, rx) = std::sync::mpsc::channel();
         for _ in 0..self.parallel {
             let tx = tx.clone();
