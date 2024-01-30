@@ -15,15 +15,15 @@ fn main() {
     let searcher = PuzzleSearcher::new(
         1000000,
         1,
-        Puzzle::base(4, 5, 2, Some(50000)),
-        50000,
+        Puzzle::base(4, 8, 0, Some(50000)),
+        30000,
         SwapNPuzzleGenerator {
             swaps: 6,
             constraints,
         },
         ShrinkStepEvaluator {},
     );
-    let launcher = Launcher::new(searcher, 2);
-    let writer = launcher::PuzzleWriter::new("puzzles/puzzle_20240122_4x4_5_coshirnk".to_string());
+    let launcher = Launcher::new(searcher, 4);
+    let writer = launcher::PuzzleWriter::new("puzzles/puzzle_20240122_4x4_8_coshirnk".to_string());
     launcher.launch(&writer).unwrap();
 }
