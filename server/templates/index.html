@@ -1,9 +1,0 @@
-{% extends 'base.html' %}
-
-{% block content %}
-<table hx-get="/puzzles">
-    {% with puzzles = puzzles %}
-        {% include 'puzzles.html' %}
-    {% endwith %}
-</table>
-{% endblock content %}
