@@ -18,7 +18,7 @@ impl PuzzleNumFormat {
     pub fn new(size: V3, piece: usize, cells: Vec<usize>) -> Self {
         Self { size, piece, cells }
     }
-    fn from_puzzle(puzzle: &Puzzle) -> Self {
+    pub fn from_puzzle(puzzle: &Puzzle) -> Self {
         let size = puzzle.size;
         let mut cells = vec![0; size * size * size];
         for x in V3Iter::cube(puzzle.size) {

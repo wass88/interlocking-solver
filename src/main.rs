@@ -8,7 +8,7 @@ mod searcher;
 mod v3;
 
 use launcher::Launcher;
-use puzzle::Puzzle;
+use puzzle::{Piece, Puzzle};
 use searcher::*;
 
 fn launch_generate() {
@@ -43,6 +43,64 @@ fn launch_gen_all_puzzles() {
     println!("done");
     println!("{}", writer.codes.len());
 }
+
+fn solve_sample_puzzle() {
+    let piece_a = Piece::from_str(
+        4,
+        "
+x.xx|x...|x...|x...
+x..x|...x|....|x...
+x..x|....|....|xxxx
+x..x|...x|...x|...x",
+    );
+    let piece_b = Piece::from_str(
+        4,
+        "
+.x..|..xx|.xx.|.xx.
+.x..|..x.|....|..xx
+.xx.|..x.|....|....
+..x.|....|....|....",
+    );
+    let piece_c = Piece::from_str(
+        4,
+        "
+....|....|...x|...x
+....|....|xxxx|....
+....|....|x...|....
+....|....|x...|x...",
+    );
+    let piece_d = Piece::from_str(
+        4,
+        "
+....|.x..|....|....
+....|xx..|....|....
+....|.x..|....|....
+.x..|.xx.|..x.|..x.",
+    );
+    let piece_e = Piece::from_str(
+        4,
+        "
+....|....|....|....
+....|....|....|....
+....|...x|.xxx|....
+....|....|.x..|.x..",
+    );
+    let puzzle = Puzzle {
+        size: 4,
+        pieces: vec![piece_a, piece_b, piece_c, piece_d, piece_e],
+        space: 16,
+        margin: 4,
+        reach_limit: None,
+        multi: Some(1),
+    };
+    assert!(puzzle.check_puzzle());
+    let result = puzzle.solve();
+    let moves = result.moves(&puzzle);
+    println!("{:?}", moves);
+}
+
 fn main() {
-    launch_gen_all_puzzles()
+    // launch_generate()
+    // launch_gen_all_puzzles()
+    solve_sample_puzzle()
 }

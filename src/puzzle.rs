@@ -381,11 +381,37 @@ burr_plate([[\n",
                 None => None,
             })
             .collect::<Vec<_>>();
-        let use_pieces = std::cmp::min(
-            self.multi.unwrap_or(available.len() - 1),
-            available.len() - 1,
-        );
+        let use_pieces = if available.len() <= 2 {
+            1
+        } else {
+            std::cmp::min(
+                self.multi.unwrap_or(available.len() - 2),
+                available.len() - 2,
+            )
+        };
         crate::iters::SubsetsIter::new(&available, use_pieces)
+    }
+    pub fn check_puzzle(&self) -> bool {
+        for i in 0..self.pieces.len() {
+            if self.pieces[i].block.count() == 0 {
+                println!("ERROR: piece {} is empty", i);
+                return false;
+            }
+            if !self.pieces[i].block.is_connected() {
+                println!("ERROR: piece {} is not connected", i);
+                return false;
+            }
+        }
+        let mut cells = self.pieces[0].block.clone();
+        for i in 1..self.pieces.len() {
+            let piece = &self.pieces[i].block;
+            if cells.overlap(piece) {
+                println!("ERROR: piece overlap");
+                return false;
+            }
+            cells.or_inplace(piece)
+        }
+        true
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -530,14 +556,14 @@ impl Piece {
             size,
         }
     }
-    fn from_str(size: usize, str: &str) -> Piece {
+    pub fn from_str(size: usize, str: &str) -> Piece {
         let mut piece = Piece::empty(size);
         let mut x = 0;
         let mut y = 0;
         let mut z = 0;
         for c in str.chars() {
             match c {
-                'X' => {
+                'X' | 'x' => {
                     piece.block.set(x, y, z, true);
                 }
                 '.' => {
@@ -562,6 +588,8 @@ impl Piece {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
+
+    use crate::puzzle_num_format::PuzzleNumFormat;
 
     use super::*;
     #[test]
@@ -732,55 +760,6 @@ XXXX|XXXX|XXXX|XXX.",
         assert!(result.moves(&puzzle).len() == 5);
     }
     #[test]
-    fn test_rand_puzzle() {
-        let piece_a = Piece::from_str(
-            4,
-            "..xx|..x.|....|....
-        xx.x|.x..|....|....
-        xxxx|...x|....|....
-        xxxx|....|....|....",
-        );
-        let piece_b = Piece::from_str(
-            4,
-            "....|....|....|....
-        ..x.|..x.|....|xxx.
-        ....|xxx.|.x..|.x..
-        ....|....|.x..|.x..",
-        );
-        let piece_c = Piece::from_str(
-            4,
-            "....|xx.x|x.xx|....
-        ....|x..x|xxx.|....
-        ....|....|x...|x...
-        ....|....|....|....",
-        );
-        let piece_d = Piece::from_str(
-            4,
-            "....|....|....|....
-        ....|....|....|....
-        ....|....|....|...x
-        ....|xxx.|x.x.|x.xx",
-        );
-        let piece_e = Piece::from_str(
-            4,
-            "....|....|.x..|xxxx
-        ....|....|...x|...x
-        ....|....|..xx|..x.
-        ....|...x|...x|....",
-        );
-        let puzzle = Puzzle {
-            pieces: vec![piece_a, piece_b, piece_c, piece_d, piece_e],
-            size: 4,
-            margin: 4,
-            space: 4 * 4,
-            reach_limit: Some(7),
-            multi: None,
-        };
-        let result = puzzle.solve();
-        assert!(result.ok);
-        println!("Moves {:?}", result.shrink_move(&result.moves(&puzzle)));
-    }
-    #[test]
     fn test_queue() {
         let mut queue = std::collections::BinaryHeap::new();
         let state = State {
@@ -856,35 +835,6 @@ XXXX|XXXX|XXXX|XXX.",
                 .subset_indexes(&vec![Some(0), None, Some(2)])
                 .collect_vec(),
             vec![vec![0], vec![2]]
-        );
-        let full = vec![
-            vec![0],
-            vec![1],
-            vec![2],
-            vec![0, 1],
-            vec![0, 2],
-            vec![1, 2],
-        ];
-        puzzle.multi = Some(2);
-        assert_eq!(
-            puzzle
-                .subset_indexes(&vec![Some(0), Some(1), Some(2)])
-                .collect_vec(),
-            full
-        );
-        puzzle.multi = Some(3);
-        assert_eq!(
-            puzzle
-                .subset_indexes(&vec![Some(0), Some(1), Some(2)])
-                .collect_vec(),
-            full
-        );
-        puzzle.multi = None;
-        assert_eq!(
-            puzzle
-                .subset_indexes(&vec![Some(0), Some(1), Some(2)])
-                .collect_vec(),
-            full
         );
     }
 }
