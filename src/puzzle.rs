@@ -1,12 +1,21 @@
 use crate::cells::*;
+use crate::iters::V3Iter;
+use crate::v3::{V3, V3I};
 
 #[derive(Clone, Debug)]
 pub struct Puzzle {
+    /// Pieces of the puzzle
     pub pieces: Vec<Piece>,
+    /// Size of puzzle
     pub size: usize,
-    pub margin: usize,
+    /// World coordinate size
     pub space: usize,
+    /// Normalized position and moving margin
+    pub margin: usize,
+    /// Limit of nodes to search (None=unlimited)
     pub reach_limit: Option<usize>,
+    /// Max of moving of multi pieces (None=unlimited)
+    pub multi: Option<usize>,
 }
 
 use std::collections::HashMap;
@@ -48,7 +57,7 @@ impl PartialOrd for State {
     }
 }
 
-fn state_to_vec(size: usize, state: &State) -> Vec<Option<(usize, usize, usize)>> {
+fn state_to_vec(size: usize, state: &State) -> Vec<Option<V3>> {
     state
         .indexes
         .iter()
@@ -59,7 +68,7 @@ fn state_to_str(size: usize, state: &State) -> String {
     let mut s = String::new();
     for (i, index) in state.indexes.iter().enumerate() {
         if let Some(index) = index {
-            let (x, y, z) = Cells::from_index(size, *index);
+            let V3(x, y, z) = Cells::from_index(size, *index);
             s.push_str(&format!("({}, {}, {}) ", x, y, z));
         } else {
             s.push_str("() ");
@@ -74,7 +83,7 @@ impl Puzzle {
         let init_pos = Cells::to_index(self.space, self.margin, self.margin, self.margin);
         State {
             indexes: vec![Some(init_pos); self.pieces.len()],
-            shift: (0, 0, 0),
+            shift: V3I(0, 0, 0),
         }
     }
     pub fn solve(&self) -> SolveResult {
@@ -98,8 +107,8 @@ impl Puzzle {
         use std::cmp::Reverse;
         let mut reached = HashMap::new();
         let mut queue = std::collections::BinaryHeap::new();
-        queue.push(Reverse((self.init_state(), 0, 0)));
-        while let Some(Reverse((state, step, last_piece))) = queue.pop() {
+        queue.push(Reverse((self.init_state(), 0)));
+        while let Some(Reverse((state, step))) = queue.pop() {
             if self.is_solved(&state) {
                 if log {
                     println!("INFO: SOLVED limit={} step={}", reached.len(), step);
@@ -119,7 +128,7 @@ impl Puzzle {
                     break;
                 }
             }
-            for (next_state, last_piece) in self.next_states(&state, last_piece) {
+            for next_state in self.next_states(&state) {
                 if reached.contains_key(&next_state) {
                     continue;
                 }
@@ -131,7 +140,7 @@ impl Puzzle {
                     }
                     reached.insert(removed_state.clone(), next_state.clone());
                 }
-                queue.push(Reverse((removed_state.clone(), step + 1, last_piece)));
+                queue.push(Reverse((removed_state.clone(), step + 1)));
             }
         }
         if log {
@@ -167,39 +176,31 @@ impl Puzzle {
         }
         result
     }
-    fn next_states(&self, state: &State, last_piece: usize) -> Vec<(State, usize)> {
+    fn next_states(&self, state: &State) -> Vec<State> {
         let mut next_states = Vec::new();
-        for c in 0..self.pieces.len() {
-            let i = (last_piece + c) % self.pieces.len();
-            let Some(index) = state.indexes[i] else {
-                continue;
-            };
-            let (x, y, z) = Cells::from_index(self.space, index);
-            for (dx, dy, dz) in D6 {
-                for s in 1..self.space {
-                    let (nx, ny, nz) = (
-                        x as isize + dx * s as isize,
-                        y as isize + dy * s as isize,
-                        z as isize + dz * s as isize,
-                    );
-                    if nx < 0 || ny < 0 || nz < 0 {
-                        break;
-                    }
-                    let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
-                    if nx + self.size + self.margin >= self.space
-                        || ny + self.size + self.margin >= self.space
-                        || nz + self.size + self.margin >= self.space
-                    {
-                        break;
-                    }
+        // each subsets of pieces
+        for move_indexes in self.subset_indexes(&state.indexes) {
+            // each ways of moving
+            for d in D6 {
+                // each distance of moving
+                'outer: for s in 1..self.space {
                     let mut next_state = state.clone();
-                    let next_pos = Cells::to_index(self.space, nx, ny, nz);
-                    next_state.indexes[i] = Some(next_pos);
+                    for i in move_indexes.iter() {
+                        let p =
+                            V3I::from(Cells::from_index(self.space, state.indexes[*i].unwrap()));
+                        if let Some(n) =
+                            (p + d * s).into_v3_in(&V3::cube(self.space - self.size - self.margin))
+                        {
+                            next_state.indexes[*i] = Some(Cells::to_indexv(self.space, n));
+                        } else {
+                            break 'outer;
+                        }
+                    }
                     if self.collides(&next_state) {
                         break;
                     }
                     let next_state = self.normalize_state(&next_state);
-                    next_states.push((next_state, i));
+                    next_states.push(next_state);
                 }
             }
         }
@@ -249,7 +250,7 @@ impl Puzzle {
     }
     pub fn base(size: usize, num_pieces: usize, holes: usize, limit: Option<usize>) -> Puzzle {
         let mut pieces = vec![Piece::empty(size); num_pieces];
-        for (x, y, z) in V3Iter::cube(size) {
+        for V3(x, y, z) in V3Iter::cube(size) {
             let pz = z;
             let py = if z % 2 == 0 { y } else { size - y - 1 };
             let px = if (y + z * size) % 2 == 0 {
@@ -270,6 +271,7 @@ impl Puzzle {
             margin: size,
             space: size * 5,
             reach_limit: limit,
+            multi: None,
         }
     }
     pub fn to_str(&self) -> String {
@@ -287,7 +289,7 @@ impl Puzzle {
             if state.indexes[i].is_none() {
                 continue;
             }
-            let (x, y, z) = Cells::from_index(self.space, state.indexes[i].unwrap());
+            let V3(x, y, z) = Cells::from_index(self.space, state.indexes[i].unwrap());
             let ((mx, my, mz), (ox, oy, oz)) = self.pieces[i].block.bounding_box();
             assert!(x + mx < self.space);
             assert!(y + my < self.space);
@@ -321,20 +323,20 @@ impl Puzzle {
             if state.indexes[i].is_none() {
                 continue;
             }
-            let (x, y, z) = Cells::from_index(self.space, state.indexes[i].unwrap());
+            let V3(x, y, z) = Cells::from_index(self.space, state.indexes[i].unwrap());
             state.indexes[i] = Some(Cells::to_index(
                 self.space,
                 (x as isize + shift_x) as usize,
                 (y as isize + shift_y) as usize,
                 (z as isize + shift_z) as usize,
             ));
-            let (nx, ny, nz) = Cells::from_index(self.space, state.indexes[i].unwrap());
+            let V3(nx, ny, nz) = Cells::from_index(self.space, state.indexes[i].unwrap());
             assert!(nx < self.space);
             assert!(ny < self.space);
             assert!(nz < self.space);
         }
-        let (sx, sy, sz) = state.shift;
-        state.shift = (sx + shift_x, sy + shift_y, sz + shift_z);
+        let V3I(sx, sy, sz) = state.shift;
+        state.shift = V3I(sx + shift_x, sy + shift_y, sz + shift_z);
         state
     }
     pub fn to_pcad(&self) -> String {
@@ -367,7 +369,23 @@ burr_plate([[\n",
             margin: self.margin,
             space: self.space,
             reach_limit: self.reach_limit,
+            multi: None,
         }
+    }
+    fn subset_indexes(&self, indexes: &[Option<usize>]) -> crate::iters::SubsetsIter {
+        let available = indexes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| match p {
+                Some(_) => Some(i),
+                None => None,
+            })
+            .collect::<Vec<_>>();
+        let use_pieces = std::cmp::min(
+            self.multi.unwrap_or(available.len() - 1),
+            available.len() - 1,
+        );
+        crate::iters::SubsetsIter::new(&available, use_pieces)
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -400,26 +418,26 @@ impl SolveResult {
                 .enumerate()
             {
                 if let Some(prev_pos) = prev_pos {
-                    let (pax, pay, paz) = Cells::from_index(puzzle.space, prev_pos);
-                    let (psx, psy, psz) = prev_state.shift;
+                    let V3(pax, pay, paz) = Cells::from_index(puzzle.space, prev_pos);
+                    let V3I(psx, psy, psz) = prev_state.shift;
                     let (px, py, pz) = (pax as isize - psx, pay as isize - psy, paz as isize - psz);
                     if let Some(pos) = pos {
-                        let (ax, ay, az) = Cells::from_index(puzzle.space, pos);
-                        let (sx, sy, sz) = end_state.shift;
+                        let V3(ax, ay, az) = Cells::from_index(puzzle.space, pos);
+                        let V3I(sx, sy, sz) = end_state.shift;
                         let (x, y, z) = (ax as isize - sx, ay as isize - sy, az as isize - sz);
                         if (x, y, z) == (px, py, pz) {
                             continue;
                         }
                         moves.push(Move::Shift(
                             i,
-                            (
+                            V3I(
                                 x as isize - px as isize,
                                 y as isize - py as isize,
                                 z as isize - pz as isize,
                             ),
                         ));
                     } else {
-                        moves.push(Move::Remove(i, (px, py, pz)))
+                        moves.push(Move::Remove(i, V3I(px, py, pz)))
                     }
                 }
             }
@@ -543,6 +561,8 @@ impl Piece {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use super::*;
     #[test]
     fn piece_str() {
@@ -558,9 +578,9 @@ mod tests {
         let piece_x = Piece::from_str(
             3,
             "
-        ...|.X.;...
-        ...|...;...
-        ...|.X.;...",
+        ...|.X.|...
+        ...|...|...
+        ...|.X.|...",
         );
         println!("{}", piece_x.block.to_str());
         assert!(!piece_x.block.is_connected());
@@ -595,6 +615,7 @@ mod tests {
             margin: 3,
             space: 12,
             reach_limit: None,
+            multi: None,
         };
         let result = puzzle.solve();
         assert!(result.ok);
@@ -630,6 +651,7 @@ mod tests {
             margin: 3,
             space: 12,
             reach_limit: None,
+            multi: None,
         };
         let result = puzzle.solve();
         assert!(!result.ok);
@@ -663,6 +685,7 @@ mod tests {
             margin: 6,
             space: 18,
             reach_limit: None,
+            multi: None,
         };
         let result = puzzle.solve();
         assert!(result.ok);
@@ -672,7 +695,7 @@ mod tests {
     #[test]
     fn test_base_puzzle() {
         let puzzle = Puzzle::base(3, 4, 1, None);
-        for state in puzzle.next_states(&puzzle.init_state(), 0) {
+        for state in puzzle.next_states(&puzzle.init_state()) {
             println!("!{:?}", state);
         }
         assert!(puzzle.solve().ok);
@@ -701,6 +724,7 @@ XXXX|XXXX|XXXX|XXX.",
             margin: 4,
             space: 20,
             reach_limit: None,
+            multi: None,
         };
         let result = puzzle.solve();
         assert!(result.ok);
@@ -750,6 +774,7 @@ XXXX|XXXX|XXXX|XXX.",
             margin: 4,
             space: 4 * 4,
             reach_limit: Some(7),
+            multi: None,
         };
         let result = puzzle.solve();
         assert!(result.ok);
@@ -760,15 +785,15 @@ XXXX|XXXX|XXXX|XXX.",
         let mut queue = std::collections::BinaryHeap::new();
         let state = State {
             indexes: vec![Some(0), Some(1), Some(2)],
-            shift: (0, 0, 0),
+            shift: V3I(0, 0, 0),
         };
         let removed_state = State {
             indexes: vec![Some(0), Some(1), None],
-            shift: (0, 0, 0),
+            shift: V3I(0, 0, 0),
         };
         let other_state = State {
             indexes: vec![Some(0), Some(1), Some(3)],
-            shift: (0, 0, 0),
+            shift: V3I(0, 0, 0),
         };
         use std::cmp::Reverse;
         queue.push(Reverse((state, 0)));
@@ -782,14 +807,14 @@ XXXX|XXXX|XXXX|XXX.",
     #[test]
     fn test_shrink_move() {
         let moves = vec![
-            Move::Shift(0, (1, 0, 0)),
-            Move::Shift(1, (0, 1, 0)),
-            Move::Shift(2, (0, 0, 1)),
-            Move::Shift(0, (0, 0, 1)),
-            Move::Shift(2, (0, 0, 1)),
-            Move::Shift(1, (0, 1, 1)),
-            Move::Remove(0, (0, 0, 0)),
-            Move::Remove(2, (0, 0, 0)),
+            Move::Shift(0, V3I(1, 0, 0)),
+            Move::Shift(1, V3I(0, 1, 0)),
+            Move::Shift(2, V3I(0, 0, 1)),
+            Move::Shift(0, V3I(0, 0, 1)),
+            Move::Shift(2, V3I(0, 0, 1)),
+            Move::Shift(1, V3I(0, 1, 1)),
+            Move::Remove(0, V3I(0, 0, 0)),
+            Move::Remove(2, V3I(0, 0, 0)),
         ];
         let puzzle = Puzzle::base(3, 4, 1, None);
         let result = puzzle.solve();
@@ -800,20 +825,66 @@ XXXX|XXXX|XXXX|XXX.",
     #[test]
     fn test_shrink_move2() {
         let moves = vec![
-            Move::Shift(0, (1, 0, 0)),
-            Move::Shift(1, (0, 1, 0)),
-            Move::Shift(1, (0, 0, -1)),
-            Move::Shift(2, (0, 0, 1)),
-            Move::Shift(0, (0, 0, 1)),
-            Move::Shift(2, (0, 0, 1)),
-            Move::Shift(1, (0, 1, 1)),
-            Move::Remove(0, (0, 0, 0)),
-            Move::Remove(2, (0, 0, 0)),
+            Move::Shift(0, V3I(1, 0, 0)),
+            Move::Shift(1, V3I(0, 1, 0)),
+            Move::Shift(1, V3I(0, 0, -1)),
+            Move::Shift(2, V3I(0, 0, 1)),
+            Move::Shift(0, V3I(0, 0, 1)),
+            Move::Shift(2, V3I(0, 0, 1)),
+            Move::Shift(1, V3I(0, 1, 1)),
+            Move::Remove(0, V3I(0, 0, 0)),
+            Move::Remove(2, V3I(0, 0, 0)),
         ];
         let puzzle = Puzzle::base(3, 4, 1, None);
         let result = puzzle.solve();
         let shrink = result.shrink_move(&moves);
         println!("Shrink #{} {:?}", shrink.len(), shrink);
         assert_eq!(shrink.len(), 6);
+    }
+    #[test]
+    fn test_subset_pieces() {
+        let mut puzzle = Puzzle::base(3, 4, 1, None);
+        puzzle.multi = Some(1);
+        assert_eq!(
+            puzzle
+                .subset_indexes(&vec![Some(0), Some(1), Some(2)])
+                .collect_vec(),
+            vec![vec![0], vec![1], vec![2]]
+        );
+        assert_eq!(
+            puzzle
+                .subset_indexes(&vec![Some(0), None, Some(2)])
+                .collect_vec(),
+            vec![vec![0], vec![2]]
+        );
+        let full = vec![
+            vec![0],
+            vec![1],
+            vec![2],
+            vec![0, 1],
+            vec![0, 2],
+            vec![1, 2],
+        ];
+        puzzle.multi = Some(2);
+        assert_eq!(
+            puzzle
+                .subset_indexes(&vec![Some(0), Some(1), Some(2)])
+                .collect_vec(),
+            full
+        );
+        puzzle.multi = Some(3);
+        assert_eq!(
+            puzzle
+                .subset_indexes(&vec![Some(0), Some(1), Some(2)])
+                .collect_vec(),
+            full
+        );
+        puzzle.multi = None;
+        assert_eq!(
+            puzzle
+                .subset_indexes(&vec![Some(0), Some(1), Some(2)])
+                .collect_vec(),
+            full
+        );
     }
 }

@@ -1,50 +1,5 @@
-pub type V3 = (usize, usize, usize);
-pub type V3I = (isize, isize, isize);
-fn v3cube(x: usize) -> V3 {
-    (x, x, x)
-}
-pub fn v3plus(a: V3, b: V3) -> V3 {
-    (a.0 + b.0, a.1 + b.1, a.2 + b.2)
-}
-
-pub struct V3Iter {
-    current: V3,
-    end: V3,
-}
-impl V3Iter {
-    pub fn new(v: V3) -> Self {
-        V3Iter {
-            current: (0, 0, 0),
-            end: v,
-        }
-    }
-    pub fn cube(x: usize) -> Self {
-        Self::new(v3cube(x))
-    }
-}
-impl Iterator for V3Iter {
-    type Item = V3;
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.current;
-        let (mut x, mut y, mut z) = self.current;
-        let (ex, ey, ez) = self.end;
-        if z >= ez {
-            return None;
-        }
-        x += 1;
-        if x >= ex {
-            x = 0;
-            y += 1;
-            if y >= ey {
-                y = 0;
-                z += 1;
-            }
-        }
-        self.current = (x, y, z);
-        return Some(current);
-    }
-}
-
+use crate::iters::V3Iter;
+use crate::v3::{V3, V3I};
 use bitvec_simd::BitVec;
 #[derive(Clone, Debug)]
 pub struct Cells {
@@ -77,11 +32,14 @@ impl Cells {
         let index = x + y * size + z * size * size;
         index
     }
-    pub fn from_index(size: usize, index: usize) -> (usize, usize, usize) {
+    pub fn to_indexv(size: usize, v: V3) -> usize {
+        Cells::to_index(size, v.0, v.1, v.2)
+    }
+    pub fn from_index(size: usize, index: usize) -> V3 {
         let x = index % size;
         let y = (index / size) % size;
         let z = index / size / size;
-        (x, y, z)
+        V3(x, y, z)
     }
     pub fn to_str(&self) -> String {
         let mut s = String::new();
@@ -141,48 +99,28 @@ impl Cells {
     pub fn is_connected(&self) -> bool {
         let mut cells = Cells::empty(self.size);
         let mut queue = std::collections::VecDeque::new();
-        'outer: for x in 0..self.size {
-            for y in 0..self.size {
-                for z in 0..self.size {
-                    if self.get(x, y, z) {
-                        cells.set(x, y, z, true);
-                        queue.push_back((x, y, z));
-                        break 'outer;
-                    }
-                }
+        let mut count = 0;
+        for x in V3Iter::cube(self.size) {
+            if self.getv(x) {
+                cells.setv(x, true);
+                queue.push_back(x);
+                break;
             }
         }
-        while let Some((x, y, z)) = queue.pop_front() {
-            for (dx, dy, dz) in D6 {
-                let nx = x as isize + dx;
-                let ny = y as isize + dy;
-                let nz = z as isize + dz;
-                if nx < 0 || ny < 0 || nz < 0 {
+        while let Some(x) = queue.pop_front() {
+            count += 1;
+            for d in D6 {
+                let Some(n) = (V3I::from(x) + d).into_v3_in(&V3::cube(self.size)) else {
+                    continue;
+                };
+                if cells.getv(n) || !self.getv(n) {
                     continue;
                 }
-                let nx = nx as usize;
-                let ny = ny as usize;
-                let nz = nz as usize;
-                if nx >= self.size || ny >= self.size || nz >= self.size {
-                    continue;
-                }
-                if cells.get(nx, ny, nz) || !self.get(nx, ny, nz) {
-                    continue;
-                }
-                cells.set(nx, ny, nz, true);
-                queue.push_back((nx, ny, nz));
+                cells.setv(n, true);
+                queue.push_back(n);
             }
         }
-        for x in 0..self.size {
-            for y in 0..self.size {
-                for z in 0..self.size {
-                    if self.get(x, y, z) && !cells.get(x, y, z) {
-                        return false;
-                    }
-                }
-            }
-        }
-        true
+        count == self.count()
     }
     pub fn count(&self) -> usize {
         self.bits.count_ones()
@@ -199,7 +137,7 @@ impl Cells {
     pub fn shift_expand(&self, space: usize, shift: V3) -> Cells {
         let mut res = Cells::empty(space);
         for d in V3Iter::cube(self.size) {
-            let p = v3plus(d, shift);
+            let p = d + shift;
             if self.getv(d) {
                 res.setv(p, true)
             }
@@ -209,10 +147,10 @@ impl Cells {
 }
 
 pub const D6: [V3I; 6] = [
-    (1, 0, 0),
-    (-1, 0, 0),
-    (0, 1, 0),
-    (0, -1, 0),
-    (0, 0, 1),
-    (0, 0, -1),
+    V3I(1, 0, 0),
+    V3I(-1, 0, 0),
+    V3I(0, 1, 0),
+    V3I(0, -1, 0),
+    V3I(0, 0, 1),
+    V3I(0, 0, -1),
 ];

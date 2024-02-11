@@ -1,4 +1,4 @@
-use crate::puzzle_num_format::PuzzleNumFormat;
+use crate::{puzzle_num_format::PuzzleNumFormat, v3::V3};
 
 pub struct GenAllPuzzles {
     pub size: usize,
@@ -22,7 +22,7 @@ impl GenAllPuzzles {
             if a > 0 {
                 break;
             }
-            let puzzle = PuzzleNumFormat::new((self.size, self.size, self.size), self.piece, cells);
+            let puzzle = PuzzleNumFormat::new(V3::cube(self.size), self.piece, cells);
             if puzzle.is_connected() && puzzle.is_no_empty() {
                 writer.write_puzzle(&puzzle);
             }

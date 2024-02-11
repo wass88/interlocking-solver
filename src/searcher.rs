@@ -269,6 +269,8 @@ fn drop_count(moves: &[ShrinkMove]) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use crate::v3::V3I;
+
     use super::*;
     #[test]
     fn puzzle_searcher() {
@@ -314,11 +316,11 @@ mod tests {
     fn test_drop_count() {
         use ShrinkMove::*;
         let moves = vec![
-            Shift(vec![0], vec![(0, 0, 0)]),
-            Remove(0, (0, 0, 0)),
-            Shift(vec![1], vec![(0, 0, 0)]),
-            Shift(vec![2], vec![(0, 0, 0)]),
-            Remove(1, (0, 0, 0)),
+            Shift(vec![0], vec![V3I(0, 0, 0)]),
+            Remove(0, V3I(0, 0, 0)),
+            Shift(vec![1], vec![V3I(0, 0, 0)]),
+            Shift(vec![2], vec![V3I(0, 0, 0)]),
+            Remove(1, V3I(0, 0, 0)),
         ];
         let count = drop_count(&moves);
         assert_eq!(count, 1 + 2 * 2 * 2);

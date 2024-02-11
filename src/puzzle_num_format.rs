@@ -2,8 +2,10 @@ use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    cells::{Cells, V3Iter, V3},
+    cells::Cells,
+    iters::V3Iter,
     puzzle::{Piece, Puzzle},
+    v3::V3,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,15 +21,15 @@ impl PuzzleNumFormat {
     fn from_puzzle(puzzle: &Puzzle) -> Self {
         let size = puzzle.size;
         let mut cells = vec![0; size * size * size];
-        for (x, y, z) in V3Iter::cube(puzzle.size) {
-            let index = Cells::to_index(puzzle.size, x, y, z);
+        for x in V3Iter::cube(puzzle.size) {
+            let index = Cells::to_indexv(puzzle.size, x);
             for i in 0..puzzle.pieces.len() {
-                if puzzle.pieces[i].block.getv((x, y, z)) {
+                if puzzle.pieces[i].block.getv(x) {
                     cells[index] = i + 1;
                 }
             }
         }
-        Self::new((size, size, size), puzzle.pieces.len(), cells)
+        Self::new(V3::cube(size), puzzle.pieces.len(), cells)
     }
     fn to_puzzle(&self) -> Puzzle {
         let mut pieces = vec![Piece::empty(self.size.0); self.piece];
@@ -45,14 +47,15 @@ impl PuzzleNumFormat {
             margin: self.size.0,
             space: self.size.0 * 4,
             reach_limit: None,
+            multi: None,
         }
     }
     pub fn to_block_code(&self) -> String {
         let mut code = String::new();
-        let (x, y, z) = self.size;
-        code += &format!("{}{}{}:{}:", x, y, z, self.piece);
-        for (x, y, z) in V3Iter::new(self.size) {
-            let index = Cells::to_index(self.size.0, x, y, z);
+        let V3(sx, sy, sz) = self.size;
+        code += &format!("{}{}{}:{}:", sx, sy, sz, self.piece);
+        for x in V3Iter::new(self.size) {
+            let index = Cells::to_indexv(self.size.0, x);
             code += &format!("{}", self.cells[index]);
         }
         code
@@ -61,7 +64,7 @@ impl PuzzleNumFormat {
         let code = code.split(':').collect::<Vec<_>>();
         let size = code[0].as_bytes();
         let size = (size[0] - b'0', size[1] - b'0', size[2] - b'0');
-        let size = (size.0 as usize, size.1 as usize, size.2 as usize);
+        let size = V3(size.0 as usize, size.1 as usize, size.2 as usize);
         let piece = code[1].parse().unwrap();
         let cells = code[2]
             .as_bytes()
@@ -72,10 +75,10 @@ impl PuzzleNumFormat {
     }
     fn rotate(&self, rot: &V3Matrix) -> Self {
         let mut cells = self.clone();
-        for (x, y, z) in V3Iter::new(self.size) {
-            let (nx, ny, nz) = rot.mulvec(&(x, y, z));
-            let index = Cells::to_index(self.size.0, x, y, z);
-            let new_index = Cells::to_index(self.size.0, nx, ny, nz);
+        for x in V3Iter::new(self.size) {
+            let n = rot.mulvec(&x);
+            let index = Cells::to_indexv(self.size.0, x);
+            let new_index = Cells::to_indexv(self.size.0, n);
             cells.cells[new_index] = self.cells[index];
         }
         cells
@@ -166,7 +169,7 @@ impl V3Matrix {
         assert!(x >= 0);
         assert!(y >= 0);
         assert!(z >= 0);
-        (x as usize, y as usize, z as usize)
+        V3(x as usize, y as usize, z as usize)
     }
     fn rot_x(size: usize) -> Self {
         // 1 0 0 0 -> 1 0 0 0
@@ -231,7 +234,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_rotate() {
-        let size = (2, 2, 2);
+        let size = V3(2, 2, 2);
         let cells = vec![0, 1, 0, 0, 0, 2, 0, 0];
         let format = PuzzleNumFormat::new(size, 2, cells);
         let rot = V3Matrix::rot_x(2);
@@ -240,7 +243,7 @@ mod tests {
     }
     #[test]
     fn test_rotate_index() {
-        let size = (2, 2, 2);
+        let size = V3(2, 2, 2);
         let cells = vec![0, 1, 0, 0, 0, 2, 0, 0];
         let format = PuzzleNumFormat::new(size, 2, cells);
         let format = format.rotate_index(&[0, 2, 1]);
@@ -248,7 +251,7 @@ mod tests {
     }
     #[test]
     fn test_normalize() {
-        let size = (2, 2, 2);
+        let size = V3(2, 2, 2);
         let cells = vec![0, 1, 0, 0, 0, 2, 0, 0];
         let format = PuzzleNumFormat::new(size, 2, cells);
         let format = format.normalize();
@@ -256,7 +259,7 @@ mod tests {
     }
     #[test]
     fn test_rotate_all() {
-        let size = (2, 2, 2);
+        let size = V3(2, 2, 2);
         let cells = vec![0, 1, 0, 0, 0, 2, 0, 0];
         let format = PuzzleNumFormat::new(size, 2, cells);
         let formats = format.rotate_all();
@@ -264,7 +267,7 @@ mod tests {
     }
     #[test]
     fn test_puzzle_num_format() {
-        let size = (2, 2, 2);
+        let size = V3(2, 2, 2);
         let cells = vec![0, 1, 0, 0, 0, 2, 0, 0];
         let format = PuzzleNumFormat::new(size, 2, cells);
         let puzzle = format.to_puzzle();
@@ -275,7 +278,7 @@ mod tests {
     fn test_from_block_code() {
         let code = "222:2:01000200";
         let format = PuzzleNumFormat::from_block_code(code);
-        assert_eq!(format.size, (2, 2, 2));
+        assert_eq!(format.size, V3(2, 2, 2));
         assert_eq!(format.piece, 2);
         assert_eq!(format.cells, vec![0, 1, 0, 0, 0, 2, 0, 0]);
         assert_eq!(format.to_block_code(), code);

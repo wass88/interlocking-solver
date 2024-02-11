@@ -1,9 +1,11 @@
 mod cells;
 mod gen_all_puzzles;
+mod iters;
 mod launcher;
 mod puzzle;
 mod puzzle_num_format;
 mod searcher;
+mod v3;
 
 use launcher::Launcher;
 use puzzle::Puzzle;
