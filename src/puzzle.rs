@@ -506,7 +506,7 @@ pub struct Piece {
 }
 
 impl Piece {
-    fn empty(size: usize) -> Piece {
+    pub fn empty(size: usize) -> Piece {
         Piece {
             block: Cells::empty(size),
             size,

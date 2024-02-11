@@ -12,7 +12,7 @@ pub struct V3Iter {
     end: V3,
 }
 impl V3Iter {
-    fn new(v: V3) -> Self {
+    pub fn new(v: V3) -> Self {
         V3Iter {
             current: (0, 0, 0),
             end: v,
@@ -25,8 +25,12 @@ impl V3Iter {
 impl Iterator for V3Iter {
     type Item = V3;
     fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current;
         let (mut x, mut y, mut z) = self.current;
         let (ex, ey, ez) = self.end;
+        if z >= ez {
+            return None;
+        }
         x += 1;
         if x >= ex {
             x = 0;
@@ -34,13 +38,10 @@ impl Iterator for V3Iter {
             if y >= ey {
                 y = 0;
                 z += 1;
-                if z >= ez {
-                    return None;
-                }
             }
         }
         self.current = (x, y, z);
-        return Some(self.current);
+        return Some(current);
     }
 }
 
