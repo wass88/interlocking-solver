@@ -59,7 +59,7 @@ impl PuzzleJson {
             .iter()
             .filter_map(|mov| match mov {
                 Move::Shift(p, x) => Some(MoveJson {
-                    pieces: vec![*p],
+                    pieces: p.to_owned(),
                     translate: CoordJson::from_v3i(*x),
                 }),
                 _ => None,

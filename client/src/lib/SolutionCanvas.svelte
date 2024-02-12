@@ -45,14 +45,6 @@
         addTo: illo,
         translate: { x: -40, y: -40 },
       });
-
-      new Zdog.Ellipse({
-        addTo: illo,
-        diameter: 80,
-        stroke: 10,
-        color: "#636",
-      });
-
       let puzzle = solutionShape(option, solution);
       stage.addChild(puzzle);
       prev_solution = solution;
@@ -60,7 +52,6 @@
   }
   $: {
     if (prev_solution && prev_solution !== solution) {
-      console.log("update");
       stage.children[0] = solutionShape(option, solution);
       prev_solution = solution;
     }

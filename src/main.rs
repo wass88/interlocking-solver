@@ -12,7 +12,7 @@ use std::env;
 
 use axum::{routing::get, Router};
 use launcher::Launcher;
-use puzzle::{Piece, Puzzle};
+use puzzle::Puzzle;
 use searcher::*;
 
 use crate::server::sample_puzzle;

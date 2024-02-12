@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use crate::cells::*;
 use crate::iters::V3Iter;
 use crate::v3::{V3, V3I};
@@ -87,7 +89,6 @@ impl Puzzle {
         }
     }
     pub fn solve(&self) -> SolveResult {
-        use itertools::Itertools;
         for subset in (0..self.pieces.len()).combinations(2) {
             let puzzle = self.subset_puzzle(&subset);
             let result = puzzle.solve_whole(false);
@@ -414,13 +415,8 @@ burr_plate([[\n",
         true
     }
 }
-#[derive(Clone, Copy, Debug)]
-pub enum Move {
-    Shift(usize, V3I),
-    Remove(usize, V3I),
-}
 #[derive(Clone, Debug)]
-pub enum CoinMove {
+pub enum Move {
     Shift(Vec<usize>, V3I),
     Remove(usize, V3I),
 }
@@ -437,6 +433,7 @@ impl SolveResult {
         let init_state = puzzle.init_state();
         while end_state != init_state {
             let prev_state = self.reached.get(&end_state).unwrap();
+            let mut shifts = vec![];
             for (i, (&pos, &prev_pos)) in end_state
                 .indexes
                 .iter()
@@ -454,7 +451,7 @@ impl SolveResult {
                         if (x, y, z) == (px, py, pz) {
                             continue;
                         }
-                        moves.push(Move::Shift(
+                        shifts.push((
                             i,
                             V3I(
                                 x as isize - px as isize,
@@ -467,6 +464,10 @@ impl SolveResult {
                     }
                 }
             }
+            if shifts.len() > 0 {
+                let p = shifts.iter().map(|s| s.0).collect_vec();
+                moves.push(Move::Shift(p, shifts[0].1));
+            }
             end_state = prev_state.clone();
         }
         moves.reverse();
@@ -474,18 +475,18 @@ impl SolveResult {
     }
 
     pub fn shrink_move(&self, moves: &[Move]) -> Vec<ShrinkMove> {
-        let mut coin_moves = self.coin_move(moves);
         let mut shrink_moves = Vec::new();
-        if coin_moves.len() == 0 {
+        let mut moves = moves.to_owned();
+        if moves.len() == 0 {
             return shrink_moves;
         }
-        shrink_moves.push(match coin_moves.remove(0) {
-            CoinMove::Shift(i, v) => ShrinkMove::Shift(i, vec![v]),
-            CoinMove::Remove(i, v) => ShrinkMove::Remove(i, v),
+        shrink_moves.push(match moves.remove(0) {
+            Move::Shift(i, v) => ShrinkMove::Shift(i, vec![v]),
+            Move::Remove(i, v) => ShrinkMove::Remove(i, v),
         });
-        for mov in coin_moves {
+        for mov in moves {
             match mov {
-                CoinMove::Shift(p, v) => match shrink_moves.last_mut().unwrap() {
+                Move::Shift(p, v) => match shrink_moves.last_mut().unwrap() {
                     ShrinkMove::Shift(ref mut cp, ref mut w) => {
                         if p == *cp {
                             w.push(v);
@@ -495,50 +496,11 @@ impl SolveResult {
                     }
                     ShrinkMove::Remove(cp, w) => shrink_moves.push(ShrinkMove::Shift(p, vec![v])),
                 },
-                CoinMove::Remove(p, v) => {
+                Move::Remove(p, v) => {
                     shrink_moves.push(ShrinkMove::Remove(p, v));
                 }
             }
         }
-        shrink_moves
-    }
-
-    pub fn coin_move(&self, moves: &[Move]) -> Vec<CoinMove> {
-        if moves.len() == 0 {
-            return vec![];
-        }
-
-        let mut shrink_moves = Vec::new();
-        let mut last_move = match moves[0] {
-            Move::Shift(i, v) => CoinMove::Shift(vec![i], v),
-            Move::Remove(i, v) => CoinMove::Remove(i, v),
-        };
-        for &move_ in moves.iter().skip(1) {
-            match last_move {
-                CoinMove::Shift(ref i, v) => match move_ {
-                    Move::Shift(j, w) => {
-                        if v == w {
-                            last_move = CoinMove::Shift([i.clone(), vec![j]].concat(), v);
-                        } else {
-                            shrink_moves.push(last_move);
-                            last_move = CoinMove::Shift(vec![j], w);
-                        }
-                    }
-                    Move::Remove(j, w) => {
-                        shrink_moves.push(last_move);
-                        last_move = CoinMove::Remove(j, w);
-                    }
-                },
-                CoinMove::Remove(i, v) => {
-                    shrink_moves.push(last_move);
-                    last_move = match move_ {
-                        Move::Shift(j, w) => CoinMove::Shift(vec![j], w),
-                        Move::Remove(j, w) => CoinMove::Remove(j, w),
-                    };
-                }
-            }
-        }
-        shrink_moves.push(last_move);
         shrink_moves
     }
 }
@@ -588,8 +550,6 @@ impl Piece {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-
-    use crate::puzzle_num_format::PuzzleNumFormat;
 
     use super::*;
     #[test]
@@ -744,7 +704,7 @@ mod tests {
 XXXX|X.XX|XXXX|XXXX
 XXXX|X..X|X..X|XXXX
 XXXX|X..X|X..X|XXXX
-XXXX|XXXX|XXXX|XXX.",
+XXXX|XXXX|XXXX|XXXX",
         );
         let puzzle = Puzzle {
             pieces: vec![piece_a, piece_b],
@@ -758,6 +718,44 @@ XXXX|XXXX|XXXX|XXX.",
         assert!(result.ok);
         println!("Moves {:?}", result.moves(&puzzle));
         assert!(result.moves(&puzzle).len() == 5);
+    }
+    #[test]
+    fn test_inbox_2_pieces() {
+        let piece_a1 = Piece::from_str(
+            4,
+            "
+....|....|....|....
+....|....|.X..|....
+....|....|.X..|....
+....|....|....|....",
+        );
+        let piece_a2 = Piece::from_str(
+            4,
+            "
+....|....|....|....
+....|....|..X.|....
+....|....|..X.|....
+....|....|....|....",
+        );
+        let piece_b = Piece::from_str(
+            4,
+            "
+XXXX|X..X|XXXX|XXXX
+XXXX|X..X|X..X|XXXX
+XXXX|X..X|X..X|XXXX
+XXXX|XXXX|XXXX|XXXX",
+        );
+        let puzzle = Puzzle {
+            pieces: vec![piece_a1, piece_a2, piece_b],
+            size: 4,
+            margin: 4,
+            space: 20,
+            reach_limit: None,
+            multi: None,
+        };
+        let result = puzzle.solve_whole(true);
+        assert!(result.ok);
+        println!("Moves {:?}", result.moves(&puzzle));
     }
     #[test]
     fn test_queue() {
@@ -786,12 +784,12 @@ XXXX|XXXX|XXXX|XXX.",
     #[test]
     fn test_shrink_move() {
         let moves = vec![
-            Move::Shift(0, V3I(1, 0, 0)),
-            Move::Shift(1, V3I(0, 1, 0)),
-            Move::Shift(2, V3I(0, 0, 1)),
-            Move::Shift(0, V3I(0, 0, 1)),
-            Move::Shift(2, V3I(0, 0, 1)),
-            Move::Shift(1, V3I(0, 1, 1)),
+            Move::Shift(vec![0], V3I(1, 0, 0)),
+            Move::Shift(vec![1], V3I(0, 1, 0)),
+            Move::Shift(vec![2], V3I(0, 0, 1)),
+            Move::Shift(vec![0], V3I(0, 0, 1)),
+            Move::Shift(vec![2], V3I(0, 0, 1)),
+            Move::Shift(vec![1], V3I(0, 1, 1)),
             Move::Remove(0, V3I(0, 0, 0)),
             Move::Remove(2, V3I(0, 0, 0)),
         ];
@@ -804,13 +802,13 @@ XXXX|XXXX|XXXX|XXX.",
     #[test]
     fn test_shrink_move2() {
         let moves = vec![
-            Move::Shift(0, V3I(1, 0, 0)),
-            Move::Shift(1, V3I(0, 1, 0)),
-            Move::Shift(1, V3I(0, 0, -1)),
-            Move::Shift(2, V3I(0, 0, 1)),
-            Move::Shift(0, V3I(0, 0, 1)),
-            Move::Shift(2, V3I(0, 0, 1)),
-            Move::Shift(1, V3I(0, 1, 1)),
+            Move::Shift(vec![0], V3I(1, 0, 0)),
+            Move::Shift(vec![1], V3I(0, 1, 0)),
+            Move::Shift(vec![1], V3I(0, 0, -1)),
+            Move::Shift(vec![2], V3I(0, 0, 1)),
+            Move::Shift(vec![0], V3I(0, 0, 1)),
+            Move::Shift(vec![2], V3I(0, 0, 1)),
+            Move::Shift(vec![1], V3I(0, 1, 1)),
             Move::Remove(0, V3I(0, 0, 0)),
             Move::Remove(2, V3I(0, 0, 0)),
         ];
