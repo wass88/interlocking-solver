@@ -5,11 +5,17 @@ mod launcher;
 mod puzzle;
 mod puzzle_num_format;
 mod searcher;
+mod server;
 mod v3;
 
+use std::env;
+
+use axum::{routing::get, Router};
 use launcher::Launcher;
 use puzzle::{Piece, Puzzle};
 use searcher::*;
+
+use crate::server::sample_puzzle;
 
 fn launch_generate() {
     let constraints = MinPuzzleSizeConstraints {
@@ -45,62 +51,36 @@ fn launch_gen_all_puzzles() {
 }
 
 fn solve_sample_puzzle() {
-    let piece_a = Piece::from_str(
-        4,
-        "
-x.xx|x...|x...|x...
-x..x|...x|....|x...
-x..x|....|....|xxxx
-x..x|...x|...x|...x",
-    );
-    let piece_b = Piece::from_str(
-        4,
-        "
-.x..|..xx|.xx.|.xx.
-.x..|..x.|....|..xx
-.xx.|..x.|....|....
-..x.|....|....|....",
-    );
-    let piece_c = Piece::from_str(
-        4,
-        "
-....|....|...x|...x
-....|....|xxxx|....
-....|....|x...|....
-....|....|x...|x...",
-    );
-    let piece_d = Piece::from_str(
-        4,
-        "
-....|.x..|....|....
-....|xx..|....|....
-....|.x..|....|....
-.x..|.xx.|..x.|..x.",
-    );
-    let piece_e = Piece::from_str(
-        4,
-        "
-....|....|....|....
-....|....|....|....
-....|...x|.xxx|....
-....|....|.x..|.x..",
-    );
-    let puzzle = Puzzle {
-        size: 4,
-        pieces: vec![piece_a, piece_b, piece_c, piece_d, piece_e],
-        space: 16,
-        margin: 4,
-        reach_limit: None,
-        multi: Some(1),
-    };
+    let puzzle = sample_puzzle();
     assert!(puzzle.check_puzzle());
     let result = puzzle.solve();
     let moves = result.moves(&puzzle);
     println!("{:?}", moves);
 }
 
-fn main() {
-    // launch_generate()
-    // launch_gen_all_puzzles()
-    solve_sample_puzzle()
+async fn launch_server() {
+    tracing_subscriber::fmt::init();
+    let app = Router::new()
+        .route("/api/hello", get(hello))
+        .route("/api/puzzles", get(server::puzzles));
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:13013")
+        .await
+        .unwrap();
+    println!("Listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn hello() -> &'static str {
+    "Hello, World!"
+}
+
+#[tokio::main]
+async fn main() {
+    let cmd = env::args().collect::<Vec<_>>();
+    match &cmd.get(1).unwrap_or(&"".to_owned())[..] {
+        "generate" => launch_generate(),
+        "gen_all" => launch_gen_all_puzzles(),
+        "solve_sample" => solve_sample_puzzle(),
+        _ => launch_server().await,
+    }
 }

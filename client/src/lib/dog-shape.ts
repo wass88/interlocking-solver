@@ -1,25 +1,5 @@
 import Zdog from "zdog";
-
-export type RenderOption = {
-  cellSize: number;
-  shrinkSize: number;
-};
-export type Coord = { x: number; y: number; z: number };
-export type Piece = {
-  blocks: Coord[];
-};
-export type Move = {
-  pieces: number[];
-  translate: Coord;
-};
-export type Solution = {
-  pieces: Piece[];
-  moves: Move[];
-};
-export type MoveLeap = {
-  step: number;
-  leap: number;
-};
+import type { RenderOption, Solution, MoveLeap, Piece } from "./types";
 export function solutionShape(option: RenderOption, solution: Solution) {
   let anchor = new Zdog.Anchor();
   solution.pieces.forEach((piece, i) => {

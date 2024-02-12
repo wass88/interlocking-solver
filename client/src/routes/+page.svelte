@@ -7,13 +7,26 @@
     sampleSolution,
   } from "$lib/dog-shape";
   import SolutionCanvas from "$lib/SolutionCanvas.svelte";
+  import { fetchPuzzles, hello } from "$lib/client";
   let time = 0;
   let step = 0;
   let leap = 0;
   $: {
-    step = time / 1;
     leap = time % 1;
+    step = 0 | time;
   }
+  let helloMsg = "";
+  onMount(async () => {
+    helloMsg = await hello();
+  });
+
+  let puzzles = [];
+  let solution = sampleSolution;
+  onMount(async () => {
+    puzzles = await fetchPuzzles();
+    helloMsg += ` ${puzzles.length} puzzles`;
+    solution = puzzles[0].solution;
+  });
 </script>
 
 <svelte:head>
@@ -23,23 +36,23 @@
 
 <section>
   <h1>Puzzles</h1>
-  <SolutionCanvas solution={sampleSolution} leap={{ step, leap }} />
+  <SolutionCanvas {solution} leap={{ step, leap }} />
   <input
     type="range"
     min="0"
-    max={sampleSolution.moves.length}
+    max={solution.moves.length}
     step="0.01"
     bind:value={time}
   />
   Step:{step}
   Leap:{leap}
   <p>
-    {#each sampleSolution.pieces as piece, i}
+    {#each solution.pieces as piece, i}
       {i + 1}:{JSON.stringify(piece)}
     {/each}
   </p>
   <p>
-    {#each sampleSolution.moves as move, i}
+    {#each solution.moves as move, i}
       {i + 1}:{JSON.stringify(move)}
     {/each}
   </p>
@@ -48,6 +61,7 @@
       {i + 1}:{JSON.stringify(piece)}
     {/each}
   </p>
+  <p>{helloMsg}</p>
 </section>
 
 <style>
