@@ -1,19 +1,27 @@
-use axum::{http::StatusCode, Json};
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-
 use crate::{
     iters::V3Iter,
     puzzle::{Move, Piece, Puzzle, SolveResult},
     puzzle_num_format::PuzzleNumFormat,
     v3::{V3, V3I},
 };
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use itertools::Itertools;
+use mongodb::{bson::oid::ObjectId, options::FindOptions, Client, Cursor};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct PuzzleJson {
-    code: String,
-    name: String,
-    solution: SolutionJson,
+    #[serde(rename = "_id", skip_serializing)]
+    id: Option<ObjectId>,
+    pub code: String,
+    pub name: String,
+    pub run: String,
+    pub solution: SolutionJson,
+    pub date: String,
 }
 #[derive(Serialize, Deserialize)]
 struct SolutionJson {
@@ -36,16 +44,40 @@ struct MoveJson {
     translate: Option<CoordJson>,
 }
 
-pub async fn puzzles() -> (StatusCode, Json<Vec<PuzzleJson>>) {
-    let puzzle = sample_puzzle2();
-    let result = puzzle.solve();
-    let json = PuzzleJson::from_result(&puzzle, &result);
-    let puzzles = vec![json];
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
+pub struct PuzzlesQuery {
+    pub page: Option<usize>,
+    pub limit: Option<usize>,
+}
+impl Default for PuzzlesQuery {
+    fn default() -> Self {
+        Self {
+            page: Some(1),
+            limit: Some(10),
+        }
+    }
+}
+pub async fn puzzles(
+    State(client): State<Client>,
+    query: Query<PuzzlesQuery>,
+) -> (StatusCode, Json<Vec<PuzzleJson>>) {
+    let generated = client.database("puzzle").collection("generated");
+    let page = query.page.unwrap() as u64;
+    let limit = query.limit.unwrap() as u64;
+    let option = FindOptions::builder()
+        .skip((page - 1) * limit)
+        .limit(limit as i64)
+        .build();
+    let puzzles = generated.find(None, option).await.unwrap();
+    use futures::stream::TryStreamExt;
+    let puzzles: Vec<PuzzleJson> = puzzles.try_collect().await.unwrap();
+
     (StatusCode::OK, Json(puzzles))
 }
 
 impl PuzzleJson {
-    fn from_result(puzzle: &Puzzle, result: &SolveResult) -> PuzzleJson {
+    pub fn from_result(puzzle: &Puzzle, result: &SolveResult) -> PuzzleJson {
         let code = PuzzleNumFormat::from_puzzle(puzzle);
         let date = chrono::Local::now();
         let name = format!("Untitled_{}", date.format("%Y%m%dT%H%M%S"));
@@ -69,10 +101,20 @@ impl PuzzleJson {
             })
             .collect_vec();
         PuzzleJson {
+            id: None,
             code: code.to_block_code(),
             name,
+            run: "none".to_owned(),
             solution: SolutionJson { pieces, moves },
+            date: "".to_owned(),
         }
+    }
+
+    pub fn normalized_from_puzzle(puzzle: &Puzzle) -> PuzzleJson {
+        let puzzle_code = PuzzleNumFormat::from_puzzle(puzzle);
+        let normalized = puzzle_code.normalize().to_puzzle();
+        let result = normalized.solve();
+        PuzzleJson::from_result(&normalized, &result)
     }
 }
 impl PieceJson {

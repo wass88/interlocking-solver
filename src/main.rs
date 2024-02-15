@@ -17,7 +17,7 @@ use searcher::*;
 
 use crate::server::sample_puzzle;
 
-fn launch_generate() {
+async fn launch_generate_db() {
     let constraints = MinPuzzleSizeConstraints {
         size: 2,
         next: TerminalPuzzleConstraints {},
@@ -34,8 +34,30 @@ fn launch_generate() {
         ShrinkStepEvaluator {},
     );
     let launcher = Launcher::new(searcher, 4);
-    let writer = launcher::PuzzleWriter::new("puzzles/puzzle_20240122_4x4_5_swap3ok".to_string());
-    launcher.launch(&writer).unwrap();
+    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"mongo_first").await;
+    launcher.launch(&writer).await.unwrap();
+}
+
+async fn launch_generate_file() {
+    let constraints = MinPuzzleSizeConstraints {
+        size: 2,
+        next: TerminalPuzzleConstraints {},
+    };
+    let searcher = PuzzleSearcher::new(
+        1000000,
+        1,
+        Puzzle::base(4, 5, 2, Some(1000)),
+        100000,
+        SwapNPuzzleGenerator {
+            swaps: 3,
+            constraints,
+        },
+        ShrinkStepEvaluator {},
+    );
+    let launcher = Launcher::new(searcher, 4);
+    let writer =
+        launcher::PuzzleFileWriter::new("puzzles/puzzle_20240122_4x4_5_swap3ok".to_string());
+    launcher.launch(&writer).await.unwrap();
 }
 
 fn launch_gen_all_puzzles() {
@@ -58,11 +80,23 @@ fn solve_sample_puzzle() {
     println!("{:?}", moves);
 }
 
+pub fn get_mongo_uri() -> String {
+    let mongo_uri = env::var("MONGO_URI").unwrap();
+    assert!(
+        mongo_uri.starts_with("mongodb://"),
+        "MONGO_URI must start with mongodb:// ({})",
+        mongo_uri
+    );
+    mongo_uri
+}
 async fn launch_server() {
     tracing_subscriber::fmt::init();
+    let mongo_uri = get_mongo_uri();
+    let client = mongodb::Client::with_uri_str(&mongo_uri).await.unwrap();
     let app = Router::new()
         .route("/api/hello", get(hello))
-        .route("/api/puzzles", get(server::puzzles));
+        .route("/api/puzzles", get(server::puzzles))
+        .with_state(client);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:13013")
         .await
         .unwrap();
@@ -78,7 +112,8 @@ async fn hello() -> &'static str {
 async fn main() {
     let cmd = env::args().collect::<Vec<_>>();
     match &cmd.get(1).unwrap_or(&"".to_owned())[..] {
-        "generate" => launch_generate(),
+        "generate" => launch_generate_db().await,
+        "generate_file" => launch_generate_file().await,
         "gen_all" => launch_gen_all_puzzles(),
         "solve_sample" => solve_sample_puzzle(),
         _ => launch_server().await,

@@ -1,7 +1,12 @@
 import Zdog from "zdog";
 import type { RenderOption, Solution, MoveLeap, Piece, Coord } from "./types";
 export function solutionShape(option: RenderOption, solution: Solution) {
-  let anchor = new Zdog.Anchor();
+  let anchor = new Zdog.Anchor({
+    rotate: {
+      x: -Math.PI / 5,
+      y: -Math.PI / 5,
+    },
+  });
   solution.pieces.forEach((piece, i) => {
     anchor.addChild(pieceShape(option, piece, colors[i]));
   });
