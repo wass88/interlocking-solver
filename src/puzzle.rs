@@ -545,6 +545,9 @@ impl Piece {
         }
         piece
     }
+    pub fn vec_from_str(size: usize, str: &str) -> Vec<Piece> {
+        str.split("],[").map(|s| Piece::from_str(size, s)).collect()
+    }
 }
 
 #[cfg(test)]

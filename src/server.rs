@@ -33,11 +33,11 @@ struct CoordJson {
 #[derive(Serialize, Deserialize)]
 struct MoveJson {
     pieces: Vec<usize>,
-    translate: CoordJson,
+    translate: Option<CoordJson>,
 }
 
 pub async fn puzzles() -> (StatusCode, Json<Vec<PuzzleJson>>) {
-    let puzzle = sample_puzzle();
+    let puzzle = sample_puzzle2();
     let result = puzzle.solve();
     let json = PuzzleJson::from_result(&puzzle, &result);
     let puzzles = vec![json];
@@ -60,9 +60,12 @@ impl PuzzleJson {
             .filter_map(|mov| match mov {
                 Move::Shift(p, x) => Some(MoveJson {
                     pieces: p.to_owned(),
-                    translate: CoordJson::from_v3i(*x),
+                    translate: Some(CoordJson::from_v3i(*x)),
                 }),
-                _ => None,
+                Move::Remove(p, _) => Some(MoveJson {
+                    pieces: vec![*p],
+                    translate: None,
+                }),
             })
             .collect_vec();
         PuzzleJson {
@@ -141,5 +144,48 @@ x..x|x..x|...x|...x",
         margin: 4,
         reach_limit: None,
         multi: Some(1),
+    }
+}
+
+fn sample_puzzle2() -> Puzzle {
+    let pieces = Piece::vec_from_str(
+        4,
+        r#"
+        burr_plate([[
+            "....|...x|...x|x..x",
+            ".xx.|....|....|xx.x",
+            "..x.|....|....|xx.x",
+            "x.xx|x.x.|xxxx|.x.x",
+            ],[
+            "xxxx|xxx.|..x.|.xx.",
+            "x..x|.x..|....|..x.",
+            "...x|...x|....|..x.",
+            "....|...x|....|..x.",
+            ],[
+            "....|....|.x..|....",
+            "....|..x.|.xx.|....",
+            "....|....|....|....",
+            "....|....|....|....",
+            ],[
+            "....|....|....|....",
+            "....|...x|...x|....",
+            "....|.x..|.xxx|....",
+            "....|....|....|....",
+            ],[
+            "....|....|x...|....",
+            "....|x...|x...|....",
+            "xx..|x...|x...|....",
+            ".x..|.x..|....|....",
+            ]]);
+        "#,
+    );
+
+    Puzzle {
+        size: 4,
+        pieces,
+        space: 16,
+        margin: 4,
+        reach_limit: None,
+        multi: None,
     }
 }

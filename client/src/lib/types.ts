@@ -18,7 +18,7 @@ export const PieceSchema = z.object({ blocks: z.array(CoordSchema) });
 export type Piece = z.infer<typeof PieceSchema>;
 export const MoveSchema = z.object({
   pieces: z.array(z.number()),
-  translate: CoordSchema,
+  translate: CoordSchema.nullable(),
 });
 export type Move = z.infer<typeof MoveSchema>;
 export const SolutionSchema = z.object({

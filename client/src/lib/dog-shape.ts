@@ -1,5 +1,5 @@
 import Zdog from "zdog";
-import type { RenderOption, Solution, MoveLeap, Piece } from "./types";
+import type { RenderOption, Solution, MoveLeap, Piece, Coord } from "./types";
 export function solutionShape(option: RenderOption, solution: Solution) {
   let anchor = new Zdog.Anchor();
   solution.pieces.forEach((piece, i) => {
@@ -14,13 +14,25 @@ export function updateSolution(
   leap: MoveLeap
 ) {
   let positions = currentLeapPositions(solution, leap);
-  positions.forEach((pos, i) => {
+  positions.forEach(({ pos, opacity }, i) => {
     anchor.children[i].translate = {
       x: pos.x * option.cellSize,
       y: pos.y * option.cellSize,
       z: pos.z * option.cellSize,
     };
+    anchor.children[i].children.map((box: Zdog.Box) =>
+      box.children.map(
+        (face: Zdog.Rect) => (face.color = getOpacityColor(colors[i], opacity))
+      )
+    );
   });
+}
+function getOpacityColor(color: string, opacity: number) {
+  let c = parseInt(color.slice(1), 16);
+  let r = (c >> 16) & 0xff;
+  let g = (c >> 8) & 0xff;
+  let b = c & 0xff;
+  return `rgba(${r},${g},${b},${opacity})`;
 }
 export function pieceShape(
   option: RenderOption,
@@ -47,33 +59,59 @@ export function pieceShape(
   return anchor;
 }
 
-export function currentLeapPositions(solution: Solution, leap: MoveLeap) {
+type PositionState = {
+  pos: Coord;
+  exists: boolean;
+  opacity: number;
+};
+
+export function currentLeapPositions(
+  solution: Solution,
+  leap: MoveLeap
+): PositionState[] {
   if (leap.step >= solution.moves.length) {
     return currentPositions(solution, solution.moves.length);
   }
   const current = currentPositions(solution, leap.step);
   const next = currentPositions(solution, leap.step + 1);
-  return current.map((pos, i) => ({
-    x: pos.x + (next[i].x - pos.x) * leap.leap,
-    y: pos.y + (next[i].y - pos.y) * leap.leap,
-    z: pos.z + (next[i].z - pos.z) * leap.leap,
+  return current.map(({ pos }, i) => ({
+    pos: {
+      x: pos.x + (next[i].pos.x - pos.x) * leap.leap,
+      y: pos.y + (next[i].pos.y - pos.y) * leap.leap,
+      z: pos.z + (next[i].pos.z - pos.z) * leap.leap,
+    },
+    exists: next[i].exists,
+    opacity:
+      current[i].opacity + (next[i].opacity - current[i].opacity) * leap.leap,
   }));
 }
-function currentPositions(solution: Solution, step: number) {
-  let positions = solution.pieces.map((_, i) => {
+function currentPositions(solution: Solution, step: number): PositionState[] {
+  return solution.pieces.map((_, i) => {
     return solution.moves.slice(0, step).reduce(
-      (pos, move) => {
+      (state: PositionState, move) => {
         if (move.pieces.includes(i)) {
-          pos.x += move.translate.x;
-          pos.y += move.translate.y;
-          pos.z += move.translate.z;
+          if (!state.exists || move.translate === null) {
+            return {
+              pos: state.pos,
+              exists: false,
+              opacity: 0,
+            };
+          }
+          return {
+            pos: {
+              x: state.pos.x + move.translate.x,
+              y: state.pos.y + move.translate.y,
+              z: state.pos.z + move.translate.z,
+            },
+            exists: true,
+            opacity: 1,
+          };
         }
-        return pos;
+        return state;
       },
-      { x: 0, y: 0, z: 0 }
+      { pos: { x: 0, y: 0, z: 0 }, exists: true, opacity: 1 }
     );
   });
-  return positions;
 }
 
 export const defaultOption: RenderOption = {
@@ -100,6 +138,7 @@ export const sampleSolution: Solution = {
   pieces: [samplePiece, samplePiece2],
   moves: [
     { pieces: [0], translate: { x: 1, y: 0, z: 0 } },
+    { pieces: [0], translate: null },
     { pieces: [1], translate: { x: 0, y: 1, z: 0 } },
   ],
 };

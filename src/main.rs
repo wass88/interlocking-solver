@@ -25,16 +25,16 @@ fn launch_generate() {
     let searcher = PuzzleSearcher::new(
         1000000,
         1,
-        Puzzle::base(4, 8, 0, Some(50000)),
-        30000,
+        Puzzle::base(4, 5, 2, Some(1000)),
+        100000,
         SwapNPuzzleGenerator {
-            swaps: 6,
+            swaps: 3,
             constraints,
         },
         ShrinkStepEvaluator {},
     );
     let launcher = Launcher::new(searcher, 4);
-    let writer = launcher::PuzzleWriter::new("puzzles/puzzle_20240122_4x4_8_coshirnk".to_string());
+    let writer = launcher::PuzzleWriter::new("puzzles/puzzle_20240122_4x4_5_swap3ok".to_string());
     launcher.launch(&writer).unwrap();
 }
 
