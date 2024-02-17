@@ -1,20 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    solutionShape,
-    currentLeapPositions,
-    defaultOption,
-    sampleSolution,
-  } from "$lib/dog-shape";
   import SolutionCanvas from "$lib/SolutionCanvas.svelte";
   import { fetchPuzzles, hello, samplePuzzle } from "$lib/client";
   let time = 0;
-  let step = 0;
-  let leap = 0;
-  $: {
-    leap = time % 1;
-    step = 0 | time;
-  }
+  $: leap = time % 1;
+  $: step = 0 | time;
   let helloMsg = "";
   onMount(async () => {
     helloMsg = await hello();
@@ -33,6 +23,11 @@
       helloMsg += ` ${puzzles.length} puzzles`;
     });
   });
+
+  const setCursor = (_cursor: number) => {
+    cursor = _cursor;
+    time = 0;
+  };
 </script>
 
 <svelte:head>
@@ -57,20 +52,25 @@
         Step:{step}
         Leap:{leap}
       {/await}
-      <button
-        on:click={() => {
-          page = page - 1;
-        }}
-      >
-        Prev Page
-      </button>
-      <button
-        on:click={() => {
-          page = page + 1;
-        }}
-      >
-        Next Page
-      </button>
+      <div>
+        <button
+          on:click={() => {
+            page = page - 1;
+            setCursor(0);
+          }}
+        >
+          Prev
+        </button>
+        (Page {page})
+        <button
+          on:click={() => {
+            page = page + 1;
+            setCursor(0);
+          }}
+        >
+          Next
+        </button>
+      </div>
     </div>
 
     <div class="pane">
@@ -78,8 +78,9 @@
         {#each puzzles as puzzle, i}
           <button
             class="selector"
+            class:current={i === cursor}
             on:click={() => {
-              cursor = i;
+              setCursor(i);
             }}
           >
             {i + 1}:{puzzle.name}
@@ -110,5 +111,8 @@
   }
   .selector {
     line-height: 2;
+  }
+  .current {
+    font-weight: bold;
   }
 </style>
