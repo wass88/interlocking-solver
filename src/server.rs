@@ -10,7 +10,11 @@ use axum::{
     Json,
 };
 use itertools::Itertools;
-use mongodb::{bson::oid::ObjectId, options::FindOptions, Client, Cursor};
+use mongodb::{
+    bson::{oid::ObjectId, Document},
+    options::FindOptions,
+    Client, Cursor,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -65,7 +69,10 @@ pub async fn puzzles(
     let generated = client.database("puzzle").collection("generated");
     let page = query.page.unwrap() as u64;
     let limit = query.limit.unwrap() as u64;
+    let mut sort = Document::new();
+    sort.insert("date", -1);
     let option = FindOptions::builder()
+        .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit as i64)
         .build();

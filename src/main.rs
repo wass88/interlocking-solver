@@ -26,7 +26,7 @@ async fn launch_generate_db() {
         1000000,
         1,
         Puzzle::base(4, 5, 2, Some(1000)),
-        100000,
+        500000,
         SwapNPuzzleGenerator {
             swaps: 3,
             constraints,
@@ -34,7 +34,7 @@ async fn launch_generate_db() {
         ShrinkStepEvaluator {},
     );
     let launcher = Launcher::new(searcher, 4);
-    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"mongo_first").await;
+    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"500k_retry").await;
     launcher.launch(&writer).await.unwrap();
 }
 
