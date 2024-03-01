@@ -19,13 +19,13 @@ use crate::server::sample_puzzle;
 
 async fn launch_generate_db() {
     let constraints = MinPuzzleSizeConstraints {
-        size: 2,
+        size: 4,
         next: TerminalPuzzleConstraints {},
     };
     let searcher = PuzzleSearcher::new(
         1000000,
         1,
-        Puzzle::base(4, 5, 2, Some(1000)),
+        Puzzle::base(4, 6, 1, Some(1000)),
         500000,
         SwapNPuzzleGenerator {
             swaps: 3,
@@ -34,7 +34,7 @@ async fn launch_generate_db() {
         ShrinkStepEvaluator {},
     );
     let launcher = Launcher::new(searcher, 4);
-    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"500k_retry").await;
+    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"6_piece").await;
     launcher.launch(&writer).await.unwrap();
 }
 
