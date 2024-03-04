@@ -155,5 +155,7 @@ export const colors = [
   "#6461c2",
   "#2ba9b4",
   "#93d4b5",
+  "#a7d129",
+  "#3e5f2d",
 ];
 export const backgroundColor = "#f0f6e8";

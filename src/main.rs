@@ -12,10 +12,12 @@ use std::env;
 
 use axum::{routing::get, Router};
 use launcher::Launcher;
+use mongodb::bson::doc;
 use puzzle::Puzzle;
+use puzzle_num_format::PuzzleNumFormat;
 use searcher::*;
 
-use crate::server::sample_puzzle;
+use crate::server::{sample_puzzle, PuzzleJson};
 
 async fn launch_generate_db() {
     let constraints = MinPuzzleSizeConstraints {
@@ -25,8 +27,8 @@ async fn launch_generate_db() {
     let searcher = PuzzleSearcher::new(
         1000000,
         1,
-        Puzzle::base(4, 6, 1, Some(1000)),
-        500000,
+        Puzzle::base(4, 8, 0, Some(1000)),
+        100000,
         SwapNPuzzleGenerator {
             swaps: 3,
             constraints,
@@ -34,7 +36,7 @@ async fn launch_generate_db() {
         ShrinkStepEvaluator {},
     );
     let launcher = Launcher::new(searcher, 4);
-    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"6_piece").await;
+    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"8_piece_min_8").await;
     launcher.launch(&writer).await.unwrap();
 }
 
@@ -80,6 +82,28 @@ fn solve_sample_puzzle() {
     println!("{:?}", moves);
 }
 
+async fn dump_puzzle(name: &str) {
+    let uri = get_mongo_uri();
+    let client = mongodb::Client::with_uri_str(&uri).await.unwrap();
+    let generated = client.database("puzzle").collection("generated");
+    println!("find '{}'", name);
+    let puzzle: PuzzleJson = generated
+        .find_one(doc! {"name": name}, None)
+        .await
+        .unwrap()
+        .unwrap();
+    let code = puzzle.code;
+    let pcad = PuzzleNumFormat::from_block_code(&code)
+        .to_puzzle()
+        .to_pcad();
+    use std::fs;
+    let dir_name = format!("puzzles/{}/", puzzle.run);
+    fs::create_dir_all(&dir_name).unwrap();
+    let path = format!("{}{}.pcad", dir_name, puzzle.name);
+    println!("write {} to {}", code, path);
+    fs::write(path, pcad).unwrap();
+}
+
 pub fn get_mongo_uri() -> String {
     let mongo_uri = env::var("MONGO_URI").unwrap();
     assert!(
@@ -116,6 +140,10 @@ async fn main() {
         "generate_file" => launch_generate_file().await,
         "gen_all" => launch_gen_all_puzzles(),
         "solve_sample" => solve_sample_puzzle(),
+        "dump" => {
+            let name = cmd.get(2).unwrap();
+            dump_puzzle(name).await;
+        }
         _ => launch_server().await,
     }
 }

@@ -60,7 +60,7 @@ impl PuzzleNumFormat {
         }
         code
     }
-    fn from_block_code(code: &str) -> Self {
+    pub fn from_block_code(code: &str) -> Self {
         let code = code.split(':').collect::<Vec<_>>();
         let size = code[0].as_bytes();
         let size = (size[0] - b'0', size[1] - b'0', size[2] - b'0');
