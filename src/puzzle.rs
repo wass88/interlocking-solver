@@ -68,7 +68,7 @@ fn state_to_vec(size: usize, state: &State) -> Vec<Option<V3>> {
 }
 fn state_to_str(size: usize, state: &State) -> String {
     let mut s = String::new();
-    for (i, index) in state.indexes.iter().enumerate() {
+    for (_, index) in state.indexes.iter().enumerate() {
         if let Some(index) = index {
             let V3(x, y, z) = Cells::from_index(size, *index);
             s.push_str(&format!("({}, {}, {}) ", x, y, z));
@@ -494,7 +494,7 @@ impl SolveResult {
                             shrink_moves.push(ShrinkMove::Shift(p, vec![v]));
                         }
                     }
-                    ShrinkMove::Remove(cp, w) => shrink_moves.push(ShrinkMove::Shift(p, vec![v])),
+                    ShrinkMove::Remove(_, _) => shrink_moves.push(ShrinkMove::Shift(p, vec![v])),
                 },
                 Move::Remove(p, v) => {
                     shrink_moves.push(ShrinkMove::Remove(p, v));

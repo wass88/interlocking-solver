@@ -27,17 +27,17 @@ async fn launch_generate_db() {
     let searcher = PuzzleSearcher::new(
         1000000,
         1,
-        Puzzle::base(4, 8, 0, Some(1000)),
-        100000,
+        Puzzle::base(4, 5, 2, Some(1000)),
+        10000,
         SwapNPuzzleGenerator {
             swaps: 3,
             constraints,
         },
         ShrinkStepEvaluator {},
     );
-    let launcher = Launcher::new(searcher, 4);
-    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"8_piece_min_8").await;
-    launcher.launch(&writer).await.unwrap();
+    let launcher = Launcher::new(searcher, 1, true);
+    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"5_piece_steps").await;
+    launcher.launch(writer).await.unwrap();
 }
 
 async fn launch_generate_file() {
@@ -56,10 +56,10 @@ async fn launch_generate_file() {
         },
         ShrinkStepEvaluator {},
     );
-    let launcher = Launcher::new(searcher, 4);
+    let launcher = Launcher::new(searcher, 4, false);
     let writer =
         launcher::PuzzleFileWriter::new("puzzles/puzzle_20240122_4x4_5_swap3ok".to_string());
-    launcher.launch(&writer).await.unwrap();
+    launcher.launch(writer).await.unwrap();
 }
 
 fn launch_gen_all_puzzles() {

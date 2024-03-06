@@ -13,7 +13,7 @@ use itertools::Itertools;
 use mongodb::{
     bson::{oid::ObjectId, Document},
     options::FindOptions,
-    Client, Cursor,
+    Client,
 };
 use serde::{Deserialize, Serialize};
 

@@ -83,7 +83,7 @@
               setCursor(i);
             }}
           >
-            {i + 1}:{puzzle.name}
+            {i + 1}:{puzzle.name}/{puzzle.run}
           </button>
         {/each}
       {/await}

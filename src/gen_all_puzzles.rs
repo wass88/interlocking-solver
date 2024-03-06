@@ -37,8 +37,8 @@ struct DBWriter {
     client: mongodb::Client,
 }
 impl GenAllWriter for DBWriter {
-    fn write_puzzle(&mut self, puzzle: &PuzzleNumFormat) {
-        let db = self.client.database("puzzle");
+    fn write_puzzle(&mut self, _puzzle: &PuzzleNumFormat) {
+        unimplemented!()
     }
 }
 pub struct DebugWriter {

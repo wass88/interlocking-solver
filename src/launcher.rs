@@ -1,22 +1,19 @@
-use crate::{
-    puzzle::{self, *},
-    puzzle_num_format::PuzzleNumFormat,
-    searcher::*,
-    server::PuzzleJson,
-};
+use crate::{puzzle::*, searcher::*, server::PuzzleJson};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 pub struct Launcher<G: PuzzleGenerator, E: Evaluator> {
     searcher: PuzzleSearcher<G, E>,
     parallel: usize,
+    write_steps: bool,
 }
 
-trait PuzzleWriter {
+pub trait PuzzleWriter {
     async fn write<V: EvalValue>(&self, puzzle: &Puzzle, result: &SolveResult, value: V);
     async fn write_config(&self, log: &str);
 }
 
+#[derive(Debug)]
 pub struct PuzzleFileWriter {
     dir: String,
 }
@@ -44,6 +41,7 @@ impl PuzzleWriter for PuzzleFileWriter {
     }
 }
 
+#[derive(Debug)]
 pub struct DBWriter {
     client: mongodb::Client,
     run: String,
@@ -79,6 +77,7 @@ impl PuzzleWriter for DBWriter {
         let db = self.client.database("puzzle");
         let collection = db.collection("generated");
         collection.insert_one(puzzle_json, None).await.unwrap();
+        println!("written to db")
     }
     async fn write_config(&self, log: &str) {
         let meta = RunMetaJson {
@@ -94,22 +93,28 @@ impl PuzzleWriter for DBWriter {
 }
 
 impl<G: PuzzleGenerator, E: Evaluator> Launcher<G, E> {
-    pub fn new(searcher: PuzzleSearcher<G, E>, parallel: usize) -> Self {
-        Self { searcher, parallel }
+    pub fn new(searcher: PuzzleSearcher<G, E>, parallel: usize, write_steps: bool) -> Self {
+        Self {
+            searcher,
+            parallel,
+            write_steps,
+        }
     }
 }
 
 impl<G: PuzzleGenerator + 'static, E: Evaluator + 'static> Launcher<G, E> {
-    pub async fn launch<W: PuzzleWriter>(&self, writer: &W) -> Result<(), String> {
+    pub async fn launch<W: PuzzleWriter>(&self, writer: W) -> Result<(), String> {
         writer.write_config(&format!("{:#?}", self.searcher)).await;
         let (tx, rx) = std::sync::mpsc::channel();
-        for _ in 0..self.parallel {
-            let tx = tx.clone();
-            let searcher = self.searcher.clone();
-            std::thread::spawn(move || loop {
-                let puzzle = searcher.search();
-                tx.send(puzzle).unwrap();
-            });
+        {
+            for _ in 0..self.parallel {
+                let tx = tx.clone();
+                let searcher = self.searcher.clone();
+                std::thread::spawn(move || loop {
+                    let puzzle = searcher.search(Some(tx.clone()));
+                    tx.send(puzzle).unwrap();
+                });
+            }
         }
         for puzzle in rx {
             let result = puzzle.solve();

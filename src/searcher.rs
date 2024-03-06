@@ -1,6 +1,9 @@
-use crate::puzzle::*;
+use crate::{launcher::PuzzleWriter, puzzle::*};
 use itertools::Itertools;
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    sync::{mpsc::Sender, Arc},
+};
 
 #[derive(Debug, Clone)]
 pub struct PuzzleSearcher<G: PuzzleGenerator, E: Evaluator> {
@@ -29,7 +32,7 @@ impl<G: PuzzleGenerator, E: Evaluator> PuzzleSearcher<G, E> {
             evaluator,
         }
     }
-    pub fn search(&self) -> Puzzle {
+    pub fn search(&self, logger: Option<Sender<Puzzle>>) -> Puzzle {
         let init_puzzle = self.initial.clone();
         let mut best_puzzles = vec![(init_puzzle, E::Value::default(), vec![], 0); self.stack];
         for i in 0..self.tries {
@@ -52,6 +55,10 @@ impl<G: PuzzleGenerator, E: Evaluator> PuzzleSearcher<G, E> {
                     if best_value <= &value {
                         let shrink_moves = result.shrink_move(&result.moves(&new_puzzle));
                         let count = if best_value < &value {
+                            logger.as_ref().map(|tx| {
+                                tx.send(new_puzzle.to_owned())
+                                    .expect("failed to send puzzle");
+                            });
                             println!("#{} updated", i);
                             0
                         } else {
@@ -284,7 +291,7 @@ mod tests {
             },
             ShrinkStepEvaluator {},
         );
-        let puzzle = searcher.search();
+        let puzzle = searcher.search(None);
         println!("Found\n{}", puzzle.to_str());
         let result = puzzle.solve();
         assert!(result.ok);
