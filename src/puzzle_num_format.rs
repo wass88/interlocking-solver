@@ -32,15 +32,17 @@ impl PuzzleNumFormat {
         Self::new(V3::cube(size), puzzle.pieces.len(), cells)
     }
     pub fn to_puzzle(&self) -> Puzzle {
-        let mut pieces = vec![Piece::empty(self.size.0); self.piece];
+        let mut blocks = vec![Cells::empty(self.size.0); self.piece];
         for i in 0..self.cells.len() {
             let p = self.cells[i];
             if p > 0 {
-                pieces[p - 1]
-                    .block
-                    .setv(Cells::from_index(self.size.0, i), true);
+                blocks[p - 1].setv(Cells::from_index(self.size.0, i), true);
             }
         }
+        let pieces = blocks
+            .iter()
+            .map(|block| Piece::from_block(block))
+            .collect();
         Puzzle {
             size: self.size.0,
             pieces,

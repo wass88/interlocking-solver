@@ -4,7 +4,7 @@ use bitvec_simd::BitVec;
 #[derive(Clone, Debug)]
 pub struct Cells {
     bits: BitVec,
-    size: usize,
+    pub size: usize,
 }
 impl Cells {
     pub fn empty(size: usize) -> Cells {
@@ -61,19 +61,7 @@ impl Cells {
         }
         s
     }
-    pub fn boxed(&self) -> Cells {
-        let ((min_x, min_y, min_z), (max_x, max_y, max_z)) = self.bounding_box();
-        let mut cells = Cells::empty(self.size);
-        for x in min_x..=max_x {
-            for y in min_y..=max_y {
-                for z in min_z..=max_z {
-                    cells.set(x, y, z, true);
-                }
-            }
-        }
-        cells
-    }
-    pub fn bounding_box(&self) -> ((usize, usize, usize), (usize, usize, usize)) {
+    pub fn bounding_box(&self) -> (V3, V3) {
         let mut min_x = self.size;
         let mut min_y = self.size;
         let mut min_z = self.size;
@@ -94,7 +82,7 @@ impl Cells {
                 }
             }
         }
-        ((min_x, min_y, min_z), (max_x, max_y, max_z))
+        (V3(min_x, min_y, min_z), V3(max_x, max_y, max_z))
     }
     pub fn is_connected(&self) -> bool {
         let mut cells = Cells::empty(self.size);
@@ -134,16 +122,6 @@ impl Cells {
     pub fn overlap(&self, other: &Cells) -> bool {
         self.bits.and_cloned(&other.bits).any()
     }
-    pub fn shift_expand(&self, space: usize, shift: V3) -> Cells {
-        let mut res = Cells::empty(space);
-        for d in V3Iter::cube(self.size) {
-            let p = d + shift;
-            if self.getv(d) {
-                res.setv(p, true)
-            }
-        }
-        res
-    }
 }
 
 pub const D6: [V3I; 6] = [
@@ -154,3 +132,33 @@ pub const D6: [V3I; 6] = [
     V3I(0, 0, 1),
     V3I(0, 0, -1),
 ];
+
+#[derive(Clone, Debug)]
+pub struct SparseCells {
+    cells: Vec<V3>,
+}
+
+impl SparseCells {
+    pub fn empty() -> SparseCells {
+        SparseCells { cells: Vec::new() }
+    }
+    pub fn from_cells(cells: &Cells) -> SparseCells {
+        let mut res = SparseCells::empty();
+        for x in V3Iter::cube(cells.size) {
+            if cells.getv(x) {
+                res.cells.push(x);
+            }
+        }
+        res
+    }
+    pub fn to_cells(&self, size: usize) -> Cells {
+        let mut res = Cells::empty(size);
+        for x in &self.cells {
+            res.setv(*x, true);
+        }
+        res
+    }
+    pub fn iter(&self) -> std::slice::Iter<V3> {
+        self.cells.iter()
+    }
+}

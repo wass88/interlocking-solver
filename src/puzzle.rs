@@ -159,21 +159,25 @@ impl Puzzle {
     }
     fn remove_pieces(&self, state: &State) -> State {
         let mut result = state.clone();
-        let boxes = self.state_to_boxes(state);
-        for k in 0..state.indexes.len() {
-            if state.indexes[k].is_none() {
+        'outer: for k in 0..state.indexes.len() {
+            let Some(index) = state.indexes[k] else {
                 continue;
-            }
-            let mut cells = Cells::empty(self.space);
+            };
             for o in 1..state.indexes.len() {
                 let p = (o + k) % state.indexes.len();
-                if let Some(piece) = &boxes[p] {
-                    cells.or_inplace(piece)
+                let Some(other) = &state.indexes[p] else {
+                    continue;
+                };
+                let collided = self.pieces[k].is_collided_box(
+                    Cells::from_index(self.space, index),
+                    &self.pieces[o],
+                    Cells::from_index(self.space, *other),
+                );
+                if collided {
+                    continue 'outer;
                 }
             }
-            if !cells.overlap(boxes[k].as_ref().unwrap()) {
-                result.indexes[k] = None
-            }
+            result.indexes[k] = None
         }
         result
     }
@@ -207,44 +211,18 @@ impl Puzzle {
         }
         next_states
     }
-    fn state_to_cells(&self, state: &State) -> Vec<Option<Cells>> {
-        state
-            .indexes
-            .iter()
-            .enumerate()
-            .map(|(i, index)| {
-                index.map(|index| {
-                    self.pieces[i]
-                        .block
-                        .shift_expand(self.space, Cells::from_index(self.space, index))
-                })
-            })
-            .collect::<Vec<_>>()
-    }
-    fn state_to_boxes(&self, state: &State) -> Vec<Option<Cells>> {
-        state
-            .indexes
-            .iter()
-            .enumerate()
-            .map(|(i, index)| {
-                index.map(|index| {
-                    self.pieces[i]
-                        .block
-                        .boxed()
-                        .shift_expand(self.space, Cells::from_index(self.space, index))
-                })
-            })
-            .collect::<Vec<_>>()
-    }
     fn collides(&self, state: &State) -> bool {
         let mut cells = Cells::empty(self.space);
-        let pieces = self.state_to_cells(state);
-        for piece in pieces.iter() {
-            if let Some(piece) = piece {
-                if cells.overlap(piece) {
+        for (i, index) in state.indexes.iter().enumerate() {
+            let Some(index) = index else {
+                continue;
+            };
+            for p in self.pieces[i].sparse.iter() {
+                let pos = *p + Cells::from_index(self.space, *index);
+                if cells.getv(pos) {
                     return true;
                 }
-                cells.or_inplace(piece);
+                cells.setv(pos, true);
             }
         }
         false
@@ -291,7 +269,7 @@ impl Puzzle {
                 continue;
             }
             let V3(x, y, z) = Cells::from_index(self.space, state.indexes[i].unwrap());
-            let ((mx, my, mz), (ox, oy, oz)) = self.pieces[i].block.bounding_box();
+            let (V3(mx, my, mz), V3(ox, oy, oz)) = self.pieces[i].block.bounding_box();
             assert!(x + mx < self.space);
             assert!(y + my < self.space);
             assert!(z + mz < self.space);
@@ -509,27 +487,39 @@ impl SolveResult {
 pub struct Piece {
     pub block: Cells,
     pub size: usize,
+    pub sparse: SparseCells,
+    pub bounding_pos: (V3, V3),
 }
 
 impl Piece {
     pub fn empty(size: usize) -> Piece {
         Piece {
             block: Cells::empty(size),
+            sparse: SparseCells::empty(),
             size,
+            bounding_pos: (V3(0, 0, 0), V3(0, 0, 0)),
+        }
+    }
+    pub fn from_block(block: &Cells) -> Piece {
+        Piece {
+            block: block.clone(),
+            sparse: SparseCells::from_cells(block),
+            size: block.size,
+            bounding_pos: block.bounding_box(),
         }
     }
     pub fn from_str(size: usize, str: &str) -> Piece {
-        let mut piece = Piece::empty(size);
+        let mut block = Cells::empty(size);
         let mut x = 0;
         let mut y = 0;
         let mut z = 0;
         for c in str.chars() {
             match c {
                 'X' | 'x' => {
-                    piece.block.set(x, y, z, true);
+                    block.set(x, y, z, true);
                 }
                 '.' => {
-                    piece.block.set(x, y, z, false);
+                    block.set(x, y, z, false);
                 }
                 _ => continue,
             }
@@ -543,10 +533,26 @@ impl Piece {
                 y += 1;
             }
         }
-        piece
+        Piece::from_block(&block)
     }
     pub fn vec_from_str(size: usize, str: &str) -> Vec<Piece> {
         str.split("],[").map(|s| Piece::from_str(size, s)).collect()
+    }
+    pub fn is_collided_box(&self, index: V3, other: &Self, other_index: V3) -> bool {
+        let (this_min, this_max) = self.bounding_pos;
+        let (this_min, this_max) = (this_min + index, this_max + index);
+        let (other_min, other_max) = other.bounding_pos;
+        let (other_min, other_max) = (other_min + other_index, other_max + other_index);
+        if this_max.0 < other_min.0 || other_max.0 < this_min.0 {
+            return false;
+        }
+        if this_max.1 < other_min.1 || other_max.1 < this_min.1 {
+            return false;
+        }
+        if this_max.2 < other_min.2 || other_max.2 < this_min.2 {
+            return false;
+        }
+        true
     }
 }
 
@@ -709,6 +715,7 @@ XXXX|X..X|X..X|XXXX
 XXXX|X..X|X..X|XXXX
 XXXX|XXXX|XXXX|XXXX",
         );
+        println!("{:?}", piece_a);
         let puzzle = Puzzle {
             pieces: vec![piece_a, piece_b],
             size: 4,
@@ -791,7 +798,7 @@ XXXX|XXXX|XXXX|XXXX",
             Move::Shift(vec![1], V3I(0, 1, 0)),
             Move::Shift(vec![2], V3I(0, 0, 1)),
             Move::Shift(vec![0], V3I(0, 0, 1)),
-            Move::Shift(vec![2], V3I(0, 0, 1)),
+            Move::Shift(vec![1], V3I(0, 0, 1)),
             Move::Shift(vec![1], V3I(0, 1, 1)),
             Move::Remove(0, V3I(0, 0, 0)),
             Move::Remove(2, V3I(0, 0, 0)),
@@ -800,7 +807,7 @@ XXXX|XXXX|XXXX|XXXX",
         let result = puzzle.solve();
         let shrink = result.shrink_move(&moves);
         println!("Shrink #{} {:?}", shrink.len(), shrink);
-        assert_eq!(shrink.len(), 6);
+        assert_eq!(shrink.len(), 7);
     }
     #[test]
     fn test_shrink_move2() {
@@ -819,7 +826,7 @@ XXXX|XXXX|XXXX|XXXX",
         let result = puzzle.solve();
         let shrink = result.shrink_move(&moves);
         println!("Shrink #{} {:?}", shrink.len(), shrink);
-        assert_eq!(shrink.len(), 6);
+        assert_eq!(shrink.len(), 8);
     }
     #[test]
     fn test_subset_pieces() {

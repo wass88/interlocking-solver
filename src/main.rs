@@ -28,15 +28,15 @@ async fn launch_generate_db() {
         1000000,
         1,
         Puzzle::base(4, 5, 2, Some(1000)),
-        10000,
+        50000,
         SwapNPuzzleGenerator {
             swaps: 3,
             constraints,
         },
         ShrinkStepEvaluator {},
     );
-    let launcher = Launcher::new(searcher, 1, true);
-    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"5_piece_steps").await;
+    let launcher = Launcher::new(searcher, 4, false);
+    let writer = launcher::DBWriter::new(&get_mongo_uri(), &"5_piece_2_hole_50k_try").await;
     launcher.launch(writer).await.unwrap();
 }
 

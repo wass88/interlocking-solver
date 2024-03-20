@@ -1,4 +1,4 @@
-use crate::{launcher::PuzzleWriter, puzzle::*};
+use crate::{cells::Cells, launcher::PuzzleWriter, puzzle::*};
 use itertools::Itertools;
 use std::{
     fmt::Debug,
@@ -151,7 +151,12 @@ pub struct SwapPuzzleGenerator<C: PuzzleConstraints> {
 }
 impl<C: PuzzleConstraints> PuzzleGenerator for SwapPuzzleGenerator<C> {
     fn generate(&self, puzzle: &Puzzle) -> Puzzle {
-        let mut pieces = puzzle.pieces.clone();
+        let init_blocks = puzzle
+            .pieces
+            .iter()
+            .map(|piece| piece.block.clone())
+            .collect_vec();
+        let mut blocks = init_blocks.clone();
 
         use rand::Rng;
         let mut rnd = rand::thread_rng();
@@ -162,45 +167,48 @@ impl<C: PuzzleConstraints> PuzzleGenerator for SwapPuzzleGenerator<C> {
             let z = rnd.gen_range(0..puzzle.size);
 
             let mut found = false;
-            for a in 0..puzzle.pieces.len() {
-                if pieces[a].block.get(x, y, z) {
-                    pieces[a].block.set(x, y, z, false);
-                    let b = (a + rnd.gen_range(1..puzzle.pieces.len())) % puzzle.pieces.len();
-                    pieces[b].block.set(x, y, z, true);
+            for a in 0..blocks.len() {
+                if blocks[a].get(x, y, z) {
+                    blocks[a].set(x, y, z, false);
+                    let b = (a + rnd.gen_range(1..blocks.len())) % blocks.len();
+                    blocks[b].set(x, y, z, true);
                     found = true;
                     break;
                 }
             }
             if !found {
-                let a = rnd.gen_range(0..puzzle.pieces.len());
+                let a = rnd.gen_range(0..blocks.len());
                 let (nx, ny, nz) = (
                     rnd.gen_range(0..puzzle.size),
                     rnd.gen_range(0..puzzle.size),
                     rnd.gen_range(0..puzzle.size),
                 );
-                if !pieces[a].block.get(nx, ny, nz) {
+                if !blocks[a].get(nx, ny, nz) {
                     continue 'retry;
                 }
-                assert!(!pieces[a].block.get(x, y, z));
-                assert!(pieces[a].block.get(nx, ny, nz));
-                pieces[a].block.set(x, y, z, true);
-                pieces[a].block.set(nx, ny, nz, false);
+                assert!(!blocks[a].get(x, y, z));
+                assert!(blocks[a].get(nx, ny, nz));
+                blocks[a].set(x, y, z, true);
+                blocks[a].set(nx, ny, nz, false);
             }
 
-            for piece in pieces.iter() {
-                if !piece.block.is_connected() || piece.block.count() == 0 {
-                    pieces = puzzle.pieces.clone();
+            for block in blocks.iter() {
+                if !block.is_connected() || block.count() == 0 {
+                    blocks = init_blocks.clone();
                     continue 'retry;
                 }
             }
 
-            if !self.constraints.is_ok(&pieces) {
+            if !self.constraints.is_ok(&blocks) {
                 continue 'retry;
             }
             break;
         }
         let mut puzzle = puzzle.clone();
-        puzzle.pieces = pieces.clone();
+        puzzle.pieces = blocks
+            .iter()
+            .map(|block| Piece::from_block(block))
+            .collect();
         puzzle
     }
 }
@@ -224,7 +232,7 @@ impl<C: PuzzleConstraints> PuzzleGenerator for SwapNPuzzleGenerator<C> {
 }
 
 trait PuzzleConstraints: Clone + Send + Sync + Debug {
-    fn is_ok(&self, pieces: &[Piece]) -> bool;
+    fn is_ok(&self, blocks: &[Cells]) -> bool;
 }
 #[derive(Clone, Debug)]
 pub struct MinPuzzleSizeConstraints<C: PuzzleConstraints> {
@@ -232,14 +240,14 @@ pub struct MinPuzzleSizeConstraints<C: PuzzleConstraints> {
     pub next: C,
 }
 impl<C: PuzzleConstraints> PuzzleConstraints for MinPuzzleSizeConstraints<C> {
-    fn is_ok(&self, pieces: &[Piece]) -> bool {
-        pieces.iter().all(|piece| piece.block.count() >= self.size) && self.next.is_ok(pieces)
+    fn is_ok(&self, blocks: &[Cells]) -> bool {
+        blocks.iter().all(|block| block.count() >= self.size) && self.next.is_ok(blocks)
     }
 }
 #[derive(Clone, Debug)]
 pub struct TerminalPuzzleConstraints {}
 impl PuzzleConstraints for TerminalPuzzleConstraints {
-    fn is_ok(&self, _pieces: &[Piece]) -> bool {
+    fn is_ok(&self, blocks: &[Cells]) -> bool {
         true
     }
 }
